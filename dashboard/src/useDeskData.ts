@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { onValue, ref } from "firebase/database";
 import { db } from "./firebase";
-import type { DeskConfigMap, DeskRecord, HubRecord } from "./types";
+import type { HubRecord, OfficeTree } from "./types";
+
+// Which office subtree this board displays, e.g. "US/SVL/CRBN100".
+export const OFFICE_PATH =
+  (import.meta.env.VITE_OFFICE_PATH as string | undefined) ?? "US/SVL/CRBN100";
 
 export function useDeskData() {
-  const [desks, setDesks] = useState<Record<string, DeskRecord>>({});
+  const [office, setOffice] = useState<OfficeTree>({});
   const [hub, setHub] = useState<HubRecord | null>(null);
-  const [config, setConfig] = useState<DeskConfigMap>({});
   const [serverOffset, setServerOffset] = useState(0);
   const [connected, setConnected] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -16,9 +19,8 @@ export function useDeskData() {
     // onValue keeps a websocket open; every write by the hub lands here
     // within ~100 ms. No polling anywhere.
     const unsubs = [
-      onValue(ref(db, "desks"), (s) => setDesks(s.val() ?? {})),
+      onValue(ref(db, OFFICE_PATH), (s) => setOffice(s.val() ?? {})),
       onValue(ref(db, "hub"), (s) => setHub(s.val() ?? null)),
-      onValue(ref(db, "config/desks"), (s) => setConfig(s.val() ?? {})),
       // Difference between our clock and the database's clock, so staleness
       // math works even on a wall machine with a drifting clock.
       onValue(ref(db, ".info/serverTimeOffset"), (s) => setServerOffset(s.val() ?? 0)),
@@ -33,5 +35,5 @@ export function useDeskData() {
     return () => clearInterval(t);
   }, []);
 
-  return { desks, hub, config, connected, serverNow: now + serverOffset };
+  return { office, hub, connected, serverNow: now + serverOffset };
 }

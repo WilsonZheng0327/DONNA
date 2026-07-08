@@ -1,6 +1,6 @@
 import DeskCard from "./DeskCard";
 import { databaseUrl } from "./firebase";
-import { useDeskData } from "./useDeskData";
+import { OFFICE_PATH, useDeskData } from "./useDeskData";
 import {
   DESK_OFFLINE_AFTER_MS,
   HUB_OFFLINE_AFTER_MS,
@@ -9,7 +9,8 @@ import {
 } from "./types";
 
 function deskStatus(desk: DeskRecord, serverNow: number): DeskStatus {
-  if (!desk.lastSeenAt || serverNow - desk.lastSeenAt > DESK_OFFLINE_AFTER_MS)
+  // last_updated is epoch seconds (team schema); serverNow is ms.
+  if (!desk.last_updated || serverNow - desk.last_updated * 1000 > DESK_OFFLINE_AFTER_MS)
     return "offline";
   return desk.occupied ? "occupied" : "free";
 }
@@ -42,17 +43,24 @@ npm run dev            # restart`}</pre>
 function WaitingPanel() {
   return (
     <div className="panel">
-      <p className="panel__title">// connected — waiting for first desk data</p>
+      <p className="panel__title">// connected — no desks under {OFFICE_PATH} yet</p>
       <p className="panel__hint">
-        Power a node, or fake one from your shell to see the board light up
-        (curl commands in <b>docs/05-firebase.md</b>).
+        Power the hub (its self-test desk appears within ~10 s), power a node,
+        or fake a desk with curl (<b>docs/05-firebase.md</b>).
       </p>
     </div>
   );
 }
 
+interface FlatDesk {
+  floor: string;
+  deskId: string;
+  rec: DeskRecord;
+  status: DeskStatus;
+}
+
 export default function App() {
-  const { desks, hub, config, connected, serverNow } = useDeskData();
+  const { office, hub, connected, serverNow } = useDeskData();
 
   if (!databaseUrl) {
     return (
@@ -63,17 +71,28 @@ export default function App() {
     );
   }
 
-  const entries = Object.entries(desks)
-    .filter(([, d]) => d && typeof d === "object")
-    .sort(([, a], [, b]) => (a.nodeId ?? 0) - (b.nodeId ?? 0));
+  // floor -> desks, sorted so the board is spatially stable.
+  const floors = Object.keys(office).sort((a, b) =>
+    a.localeCompare(b, undefined, { numeric: true }),
+  );
+  const flat: FlatDesk[] = floors.flatMap((floor) =>
+    Object.entries(office[floor] ?? {})
+      .filter(([, rec]) => rec && typeof rec === "object")
+      .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+      .map(([deskId, rec]) => ({
+        floor,
+        deskId,
+        rec,
+        status: deskStatus(rec, serverNow),
+      })),
+  );
 
-  const statuses = entries.map(([, d]) => deskStatus(d, serverNow));
-  const free = statuses.filter((s) => s === "free").length;
-  const occupied = statuses.filter((s) => s === "occupied").length;
-  const offline = statuses.filter((s) => s === "offline").length;
+  const free = flat.filter((d) => d.status === "free").length;
+  const occupied = flat.filter((d) => d.status === "occupied").length;
+  const offline = flat.filter((d) => d.status === "offline").length;
 
   const hubOnline =
-    hub != null && serverNow - hub.lastSeenAt < HUB_OFFLINE_AFTER_MS;
+    hub != null && serverNow - hub.last_updated * 1000 < HUB_OFFLINE_AFTER_MS;
 
   return (
     <main className="shell">
@@ -89,31 +108,49 @@ export default function App() {
         <div className="alert">
           <span className="alert__dot" />
           hub offline
-          {hub ? ` — last heard ${Math.round((serverNow - hub.lastSeenAt) / 1000)}s ago` : " — never seen"}
+          {hub
+            ? ` — last heard ${Math.round(serverNow / 1000 - hub.last_updated)}s ago`
+            : " — never seen"}
           . Desk states below may be stale.
         </div>
       )}
 
-      {entries.length === 0 ? (
+      {flat.length === 0 ? (
         <WaitingPanel />
       ) : (
-        <section className="grid">
-          {entries.map(([key, desk], i) => (
-            <DeskCard
-              key={key}
-              desk={desk}
-              name={config[key]?.name ?? `Desk ${desk.nodeId ?? "?"}`}
-              status={statuses[i]}
-              serverNow={serverNow}
-              index={i}
-            />
-          ))}
-        </section>
+        floors.map((floor) => {
+          const floorDesks = flat.filter((d) => d.floor === floor);
+          if (floorDesks.length === 0) return null;
+          return (
+            <section key={floor} className="floor">
+              <h2 className="floor__label">
+                floor <b>{floor}</b>
+                <span className="floor__tally">
+                  {floorDesks.filter((d) => d.status === "free").length} free ·{" "}
+                  {floorDesks.length} desks
+                </span>
+              </h2>
+              <div className="grid">
+                {floorDesks.map((d, i) => (
+                  <DeskCard
+                    key={`${d.floor}/${d.deskId}`}
+                    deskId={d.deskId}
+                    rec={d.rec}
+                    status={d.status}
+                    serverNow={serverNow}
+                    index={i}
+                  />
+                ))}
+              </div>
+            </section>
+          );
+        })
       )}
 
       <footer className="foot">
         <span>{connected ? "db link up" : "db link down"}</span>
-        {hub?.ip && <span>hub {hub.ip} · wifi {hub.wifiRssi} dBm</span>}
+        <span>{OFFICE_PATH}</span>
+        {hub?.ip && <span>hub {hub.ip} · wifi {hub.wifi_rssi} dBm</span>}
         <span>deskfinder</span>
       </footer>
     </main>
@@ -134,6 +171,7 @@ function Header(props: {
         <h1>
           DESK<span>FINDER</span>
         </h1>
+        <span className="head__office">{OFFICE_PATH.split("/").pop()}</span>
       </div>
       <div className="head__counts">
         <div className="count count--free">

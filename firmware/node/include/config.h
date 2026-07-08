@@ -1,6 +1,18 @@
 #pragma once
 
 // ---------------------------------------------------------------------------
+// Where this node lives. These strings ride inside every LoRa packet and
+// become the desk's path in the database:
+//   /{COUNTRY}/{SITE}/{OFFICE}/{floor}/{deskId}  e.g. /US/SVL/CRBN100/4/4T434G
+// Building-wide values live here; the per-desk floor + desk ID come from the
+// node1/node2/... envs in platformio.ini, since they differ per device.
+// Allowed characters: letters, digits, _ and - (the hub drops anything else).
+// ---------------------------------------------------------------------------
+#define DESK_COUNTRY "US"
+#define DESK_SITE    "SVL"
+#define DESK_OFFICE  "CRBN100"
+
+// ---------------------------------------------------------------------------
 // Radio wiring — XIAO ESP32S3 <-> Wio-SX1262 B2B connector, same as the hub.
 // If the real node board turns out to be different hardware, these pin
 // numbers are the main thing that changes. See docs/01-hardware.md.

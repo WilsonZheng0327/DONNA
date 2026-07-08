@@ -3,6 +3,7 @@
 // the two radios would be transmitting past each other and nothing would work.
 #pragma once
 #include <stdint.h>
+#include <stddef.h>
 
 // ---------------------------------------------------------------------------
 // LoRa radio parameters — must be IDENTICAL on every device in the network.
@@ -13,9 +14,9 @@
 // (In Europe this would have to be 868 MHz — the band is set by law.)
 constexpr float    LORA_FREQ_MHZ  = 915.0f;
 
-// Bandwidth 125 kHz + spreading factor 9 + coding rate 4/5 puts our 13-byte
-// packet at roughly 180 ms of airtime — slow, but with huge range margin for
-// an office. Drop SF to 7 (~35 ms) if you ever need faster updates.
+// Bandwidth 125 kHz + spreading factor 9 + coding rate 4/5 puts our 43-byte
+// packet at roughly 280 ms of airtime — slow, but with huge range margin for
+// an office. Drop SF to 7 (~55 ms) if you ever need faster updates.
 constexpr float    LORA_BW_KHZ    = 125.0f;
 constexpr uint8_t  LORA_SF        = 9;
 constexpr uint8_t  LORA_CR        = 5;      // denominator: 5 means rate 4/5
@@ -43,22 +44,42 @@ constexpr float    LORA_TCXO_VOLTS = 1.8f;
 // garage doors, other LoRa networks — so the hub drops any payload that
 // doesn't open with these exact bytes ("DSK1").
 constexpr uint32_t PACKET_MAGIC     = 0x44534B31;
-constexpr uint8_t  PROTOCOL_VERSION = 1;
+constexpr uint8_t  PROTOCOL_VERSION = 2;
 
-// 13 bytes on the wire. `packed` forbids the compiler from inserting padding
+// 43 bytes on the wire. `packed` forbids the compiler from inserting padding
 // between fields — the struct bytes ARE the radio payload, so layout must be
 // deterministic and identical on both MCUs.
+//
+// v2: each node carries its own location, so the hub is a stateless
+// translator: packet -> /{country}/{site}/{office}/{floor}/{deskId} in the
+// database. Moving a sensor to another desk = reflash that one node; the
+// hub never needs to know the floor plan.
+//
+// String fields are fixed-width, zero-padded, NOT NUL-terminated when full.
 struct __attribute__((packed)) DeskPacket {
-  uint32_t magic;       // PACKET_MAGIC, or the hub ignores the packet
-  uint8_t  version;     // PROTOCOL_VERSION, bump when this struct changes
-  uint8_t  nodeId;      // which desk (set per-node in platformio.ini)
-  uint16_t seq;         // +1 every transmit; gaps at the hub = lost packets
-  uint8_t  occupied;    // 1 = someone is at the desk
-  uint16_t distanceMm;  // raw ToF reading behind the decision (for tuning)
-  uint16_t batteryMv;   // 0 = not measured (future use)
+  uint32_t magic;        // PACKET_MAGIC, or the hub ignores the packet
+  uint8_t  version;      // PROTOCOL_VERSION, bump when this struct changes
+  uint8_t  nodeId;       // compact per-node id for logs/diagnostics
+  uint16_t seq;          // +1 every transmit; gaps at the hub = lost packets
+  uint8_t  occupied;     // 1 = someone is at the desk
+  uint16_t distanceMm;   // raw ToF reading behind the decision (for tuning)
+  uint16_t batteryMv;    // 0 = not measured (future use)
+  char     country[2];   // "US"
+  char     site[4];      // "SVL"
+  char     office[8];    // "CRBN100"
+  char     floorCode[4]; // "4" (string, so "B1"/"12" work too)
+  char     deskId[12];   // "4T434G"
 };
 
-static_assert(sizeof(DeskPacket) == 13, "packet layout changed - bump PROTOCOL_VERSION");
+static_assert(sizeof(DeskPacket) == 43, "packet layout changed - bump PROTOCOL_VERSION");
+
+// Copy a C string into a fixed-width packet field, zero-padding the rest.
+// Truncates silently if src is longer than the field — size your IDs to fit.
+inline void packStr(char* dst, size_t n, const char* src) {
+  size_t i = 0;
+  for (; i < n && src[i] != '\0'; i++) dst[i] = src[i];
+  for (; i < n; i++) dst[i] = '\0';
+}
 
 // Nodes re-send their state at least this often even when nothing changes.
 // That heartbeat is what lets the system distinguish "desk is free" from

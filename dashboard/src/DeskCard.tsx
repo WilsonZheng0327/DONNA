@@ -1,4 +1,4 @@
-import type { DeskRecord, DeskStatus } from "./types";
+import { SELFTEST_DESK_ID, type DeskRecord, type DeskStatus } from "./types";
 
 function timeAgo(ms: number): string {
   if (ms < 0) ms = 0;
@@ -24,23 +24,27 @@ const STATUS_LABEL: Record<DeskStatus, string> = {
 };
 
 interface Props {
-  desk: DeskRecord;
-  name: string;
+  deskId: string;
+  rec: DeskRecord;
   status: DeskStatus;
   serverNow: number;
   index: number;
 }
 
-export default function DeskCard({ desk, name, status, serverNow, index }: Props) {
-  const bars = rssiBars(desk.rssi ?? -120);
+export default function DeskCard({ deskId, rec, status, serverNow, index }: Props) {
+  const isSelfTest = deskId === SELFTEST_DESK_ID;
+  const bars = rssiBars(rec.rssi ?? -120);
+  const agoMs = serverNow - (rec.last_updated ?? 0) * 1000;
   return (
     <article
       className={`card card--${status}`}
       style={{ animationDelay: `${index * 45}ms` }}
     >
       <header className="card__head">
-        <span className="card__name">{name}</span>
-        <span className="card__id">N{String(desk.nodeId ?? "?").padStart(2, "0")}</span>
+        <span className="card__name">{isSelfTest ? "HUB SELF-TEST" : deskId}</span>
+        {rec.node_id != null && (
+          <span className="card__id">N{String(rec.node_id).padStart(2, "0")}</span>
+        )}
       </header>
 
       {/* key= makes React remount on status change, replaying the flash */}
@@ -49,21 +53,21 @@ export default function DeskCard({ desk, name, status, serverNow, index }: Props
       </div>
 
       <footer className="card__meta">
-        <span title="time since last packet from this node">
+        <span title="time since last update for this desk">
           {status === "offline" ? "lost " : ""}
-          {timeAgo(serverNow - (desk.lastSeenAt ?? 0))}
+          {timeAgo(agoMs)}
           {status === "offline" ? " ago" : ""}
         </span>
         <span
           className="card__bars"
-          title={`RSSI ${desk.rssi?.toFixed?.(0) ?? "?"} dBm · SNR ${desk.snr?.toFixed?.(1) ?? "?"} dB · seq ${desk.seq ?? "?"}`}
+          title={`RSSI ${rec.rssi?.toFixed?.(0) ?? "?"} dBm · SNR ${rec.snr?.toFixed?.(1) ?? "?"} dB · seq ${rec.seq ?? "?"}`}
         >
           {[1, 2, 3, 4].map((b) => (
             <i key={b} className={b <= bars ? "on" : ""} style={{ height: 3 + b * 3 }} />
           ))}
         </span>
         <span title="raw ToF distance behind the decision">
-          {desk.distanceMm ?? "—"} mm
+          {rec.distance_mm ?? "—"} mm
         </span>
       </footer>
     </article>

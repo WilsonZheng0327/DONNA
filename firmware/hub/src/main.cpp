@@ -2,13 +2,18 @@
 //
 // The hub's whole job:
 //   1. sit in LoRa receive mode and collect DeskPacket broadcasts from nodes
-//   2. mirror the latest state of every desk into Firebase over WiFi/HTTPS
-//   3. write its own heartbeat so the dashboard can tell "hub is down" apart
-//      from "all desks are quiet"
+//   2. mirror each desk into Firebase under the team schema
+//        /{country}/{site}/{office}/{floor}/{deskId}
+//      e.g. /US/SVL/CRBN100/4/4T434G  ->  { occupied, last_updated, ... }
+//   3. write its own /hub heartbeat so the dashboard can tell "hub is down"
+//      apart from "all desks are quiet"
 //
 //   node --LoRa 915 MHz--> [hub] --HTTPS PATCH--> Firebase RTDB --> dashboard
 //
-// Wiring background: docs/01-hardware.md. Radio settings: shared/protocol.h.
+// The hub is a stateless translator: every packet carries its own location
+// (see shared/protocol.h), so adding/moving desks never touches hub firmware.
+// last_updated is epoch SECONDS to match the team's existing records, which
+// is why this firmware syncs NTP before it is allowed to upload anything.
 
 #include <Arduino.h>
 #include <SPI.h>
@@ -17,6 +22,7 @@
 #include <HTTPClient.h>
 #include <RadioLib.h>
 #include <ArduinoJson.h>
+#include <time.h>
 
 #include "config.h"
 #include "protocol.h"
@@ -49,6 +55,8 @@ struct DeskState {
   bool       seen  = false;
   bool       dirty = false;
   DeskPacket pkt{};
+  String     fbPath;      // "/US/SVL/CRBN100/4/4T434G", built from the packet
+  String     deskId;      // trimmed, for logs
   float      rssi = 0, snr = 0;
   uint32_t   lastRxMs = 0;
   uint32_t   rxCount  = 0;
@@ -63,14 +71,13 @@ static uint32_t lastWifiAttemptMs = 0;
 static uint32_t lastPushAttemptMs = 0;
 static uint32_t ledOffAtMs        = 0;
 static bool     wasConnected      = false;
+static bool     timeSyncAnnounced = false;
 
 static bool          realPacketSeen = false;  // first real packet retires the demo
 static unsigned long totalRxCount   = 0;
 static uint32_t      lastDemoMs     = 0;
 static uint16_t      demoSeq        = 0;
 static bool          demoOccupied   = false;
-static bool          demoNamePushed = false;
-static uint32_t      lastDemoNameAttemptMs = 0;
 static bool          demoCleanupPending = false;
 static uint32_t      lastCleanupAttemptMs = 0;
 static uint32_t      lastTickerMs   = 0;
@@ -80,6 +87,11 @@ static bool demoActive() { return DEMO_DESK_ENABLED && !realPacketSeen; }
 static bool cloudConfigured() {
   return strlen(WIFI_SSID) > 0 && strlen(FIREBASE_HOST) > 0;
 }
+
+// SNTP runs in the background once configTime() is called; the clock jumping
+// past 2023 is how we know it has synced. Until then we must not upload —
+// last_updated would be seconds-since-1970 ≈ 0, i.e. garbage.
+static bool timeSynced() { return time(nullptr) > 1700000000UL; }
 
 static void blinkLed() {
   digitalWrite(PIN_LED, LOW);            // active-low: LOW = on
@@ -129,27 +141,61 @@ static int firebaseDelete(const String& path) {
   return code;
 }
 
+// Location fields from the packet become part of a database path written
+// with admin rights, so only characters that cannot alter the path structure
+// are allowed through. A corrupt (or hostile) packet with "/" or "." in a
+// field gets dropped here, not written somewhere surprising.
+static bool sanitizeField(const char* src, size_t rawLen, String& out) {
+  out = "";
+  for (size_t i = 0; i < rawLen && src[i] != '\0'; i++) {
+    char c = src[i];
+    bool ok = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+              (c >= '0' && c <= '9') || c == '_' || c == '-';
+    if (!ok) return false;
+    out += c;
+  }
+  return out.length() > 0;
+}
+
+// Shared by real radio traffic and the self-test desk, so the demo exercises
+// the exact same table + Firebase path a real node would.
+static void recordPacket(const DeskPacket& pkt, float rssi, float snr,
+                         const String& fbPath, const String& deskId) {
+  DeskState& d = desks[pkt.nodeId];
+  d.pkt = pkt;
+  d.fbPath = fbPath;
+  d.deskId = deskId;
+  d.rssi = rssi;
+  d.snr  = snr;
+  d.lastRxMs = millis();
+  d.seen  = true;
+  d.dirty = true;
+  d.rxCount++;
+}
+
 static void pushDesk(uint8_t nodeId) {
   DeskState& d = desks[nodeId];
   JsonDocument doc;
-  doc["nodeId"]     = d.pkt.nodeId;
-  doc["occupied"]   = d.pkt.occupied != 0;
-  doc["distanceMm"] = d.pkt.distanceMm;
-  doc["batteryMv"]  = d.pkt.batteryMv;
-  doc["seq"]        = d.pkt.seq;
-  doc["rssi"]       = d.rssi;
-  doc["snr"]        = d.snr;
-  // ".sv" is an RTDB "server value": the server stamps epoch-ms on arrival.
-  // Immune to this MCU having no real-time clock.
-  doc["lastSeenAt"][".sv"] = "timestamp";
+  // Team schema fields first — same names and units (epoch seconds) as the
+  // records already in this database.
+  doc["occupied"]     = d.pkt.occupied != 0;
+  doc["last_updated"] = (uint32_t)time(nullptr);
+  // Our extra telemetry, for tuning and diagnostics.
+  doc["distance_mm"]  = d.pkt.distanceMm;
+  doc["battery_mv"]   = d.pkt.batteryMv;
+  doc["seq"]          = d.pkt.seq;
+  doc["node_id"]      = d.pkt.nodeId;
+  doc["rssi"]         = d.rssi;
+  doc["snr"]          = d.snr;
 
   String body;
   serializeJson(doc, body);
-  int code = firebasePatch(String("/desks/node-") + nodeId, body);
+  int code = firebasePatch(d.fbPath, body);
   if (code == 200) {
     d.dirty = false;
   } else {
-    Serial.printf("[fb] push node-%u failed: HTTP %d (will retry)\n", nodeId, code);
+    Serial.printf("[fb] push %s failed: HTTP %d (will retry)\n",
+                  d.fbPath.c_str(), code);
   }
 }
 
@@ -167,27 +213,19 @@ static void drainOneDirtyDesk() {
 
 static void sendHubHeartbeat() {
   JsonDocument doc;
-  doc["lastSeenAt"][".sv"] = "timestamp";
-  doc["ip"]       = WiFi.localIP().toString();
-  doc["wifiRssi"] = WiFi.RSSI();
-  doc["uptimeS"]  = millis() / 1000;
+  doc["last_updated"] = (uint32_t)time(nullptr);
+  doc["ip"]        = WiFi.localIP().toString();
+  doc["wifi_rssi"] = WiFi.RSSI();
+  doc["uptime_s"]  = millis() / 1000;
   String body;
   serializeJson(doc, body);
   int code = firebasePatch("/hub", body);
   Serial.printf("[fb] heartbeat: HTTP %d\n", code);
 }
 
-// Shared by real radio traffic and the self-test desk, so the demo exercises
-// the exact same table + Firebase path a real node would.
-static void recordPacket(const DeskPacket& pkt, float rssi, float snr) {
-  DeskState& d = desks[pkt.nodeId];
-  d.pkt = pkt;
-  d.rssi = rssi;
-  d.snr  = snr;
-  d.lastRxMs = millis();
-  d.seen  = true;
-  d.dirty = true;
-  d.rxCount++;
+static String demoPath() {
+  return String("/") + DEMO_COUNTRY + "/" + DEMO_SITE + "/" + DEMO_OFFICE +
+         "/" + DEMO_FLOOR + "/" + DEMO_DESK_ID;
 }
 
 static void serviceDemoDesk() {
@@ -203,30 +241,25 @@ static void serviceDemoDesk() {
   pkt.seq        = demoSeq++;
   pkt.occupied   = demoOccupied ? 1 : 0;
   pkt.distanceMm = demoOccupied ? 615 : 1830;  // plausible sat-down / empty readings
-  recordPacket(pkt, 0, 0);
-  Serial.printf("[demo] self-test desk node-%u -> %s (retires when a real node is heard)\n",
-                DEMO_DESK_NODE_ID, demoOccupied ? "OCCUPIED" : "free");
+  packStr(pkt.country,   sizeof pkt.country,   DEMO_COUNTRY);
+  packStr(pkt.site,      sizeof pkt.site,      DEMO_SITE);
+  packStr(pkt.office,    sizeof pkt.office,    DEMO_OFFICE);
+  packStr(pkt.floorCode, sizeof pkt.floorCode, DEMO_FLOOR);
+  packStr(pkt.deskId,    sizeof pkt.deskId,    DEMO_DESK_ID);
+
+  recordPacket(pkt, 0, 0, demoPath(), DEMO_DESK_ID);
+  Serial.printf("[demo] self-test desk %s -> %s (retires when a real node is heard)\n",
+                demoPath().c_str(), demoOccupied ? "OCCUPIED" : "free");
 }
 
 static void serviceDemoCleanup() {
   if (!demoCleanupPending) return;
   if ((int32_t)(millis() - lastCleanupAttemptMs) < 3000) return;
   lastCleanupAttemptMs = millis();
-  if (firebaseDelete(String("/desks/node-") + DEMO_DESK_NODE_ID) == 200) {
-    firebaseDelete(String("/config/desks/node-") + DEMO_DESK_NODE_ID);
+  if (firebaseDelete(demoPath()) == 200) {
     demoCleanupPending = false;
     Serial.println("[demo] self-test desk removed from Firebase");
   }
-}
-
-// Label the fake desk in /config so the dashboard card says what it is.
-static void pushDemoDeskNameOnce() {
-  if (!demoActive() || demoNamePushed) return;
-  if ((int32_t)(millis() - lastDemoNameAttemptMs) < 5000) return;
-  lastDemoNameAttemptMs = millis();
-  int code = firebasePatch(String("/config/desks/node-") + DEMO_DESK_NODE_ID,
-                           "{\"name\":\"HUB SELF-TEST\"}");
-  demoNamePushed = (code == 200);
 }
 
 static void serviceStatusTicker() {
@@ -235,9 +268,10 @@ static void serviceStatusTicker() {
   String wifiState = !cloudConfigured()   ? String("no secrets.h")
                      : WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString()
                                                      : String("connecting");
-  Serial.printf("[status] up=%lus wifi=%s lora_rx=%lu demo=%s heap=%lu\n",
-                millis() / 1000, wifiState.c_str(), totalRxCount,
-                demoActive() ? "on" : "off",
+  Serial.printf("[status] up=%lus wifi=%s time=%s lora_rx=%lu demo=%s heap=%lu\n",
+                millis() / 1000, wifiState.c_str(),
+                timeSynced() ? "synced" : "no-ntp",
+                totalRxCount, demoActive() ? "on" : "off",
                 (unsigned long)ESP.getFreeHeap());
 }
 
@@ -263,6 +297,17 @@ static void handlePacket() {
   }
   if (pkt.nodeId > MAX_NODE_ID) return;
 
+  String country, site, office, floorCode, deskId;
+  if (!sanitizeField(pkt.country,   sizeof pkt.country,   country)   ||
+      !sanitizeField(pkt.site,      sizeof pkt.site,      site)      ||
+      !sanitizeField(pkt.office,    sizeof pkt.office,    office)    ||
+      !sanitizeField(pkt.floorCode, sizeof pkt.floorCode, floorCode) ||
+      !sanitizeField(pkt.deskId,    sizeof pkt.deskId,    deskId)) {
+    Serial.printf("[lora] node %u: bad location field, dropped\n", pkt.nodeId);
+    return;
+  }
+  String path = "/" + country + "/" + site + "/" + office + "/" + floorCode + "/" + deskId;
+
   if (!realPacketSeen && demoActive() && demoSeq > 0) {
     Serial.println("[demo] real node heard - self-test desk retired");
     demoCleanupPending = true;  // remove the fake desk from Firebase too
@@ -273,11 +318,12 @@ static void handlePacket() {
   DeskState& d = desks[pkt.nodeId];
   // seq is uint16 and so is this subtraction — wraparound-safe.
   uint16_t lost = d.seen ? (uint16_t)(pkt.seq - d.pkt.seq - 1) : 0;
-  recordPacket(pkt, rssi, snr);
+  recordPacket(pkt, rssi, snr, path, deskId);
 
   blinkLed();
-  Serial.printf("[lora] node %u seq=%u %s dist=%umm rssi=%.1fdBm snr=%.1fdB%s\n",
-                pkt.nodeId, pkt.seq, pkt.occupied ? "OCCUPIED" : "free",
+  Serial.printf("[lora] %s (node %u) seq=%u %s dist=%umm rssi=%.1fdBm snr=%.1fdB%s\n",
+                path.c_str(), pkt.nodeId, pkt.seq,
+                pkt.occupied ? "OCCUPIED" : "free",
                 pkt.distanceMm, rssi, snr,
                 lost ? (String(" (") + lost + " lost)").c_str() : "");
 }
@@ -306,8 +352,9 @@ void setup() {
   digitalWrite(PIN_LED, HIGH);  // off
 
   Serial.println("\n=== deskfinder hub ===");
-  Serial.printf("LoRa %.1f MHz, BW %.0f kHz, SF%u, CR4/%u, sync 0x%02X\n",
-                LORA_FREQ_MHZ, LORA_BW_KHZ, LORA_SF, LORA_CR, LORA_SYNC_WORD);
+  Serial.printf("LoRa %.1f MHz, BW %.0f kHz, SF%u, CR4/%u, sync 0x%02X, proto v%u\n",
+                LORA_FREQ_MHZ, LORA_BW_KHZ, LORA_SF, LORA_CR, LORA_SYNC_WORD,
+                PROTOCOL_VERSION);
 
   // Without this the RF switch between antenna and radio is unpowered and
   // no packet ever makes it in or out, even though SPI looks healthy.
@@ -333,6 +380,9 @@ void setup() {
     WiFi.setAutoReconnect(true);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     lastWifiAttemptMs = millis();
+    // Background SNTP: the clock is needed because last_updated is epoch
+    // seconds (team schema) and this MCU boots thinking it's 1970.
+    configTime(0, 0, "pool.ntp.org", "time.google.com");
     // Prototype tradeoff: skip TLS certificate verification (no CA bundle /
     // trusted clock on this MCU yet). Traffic is still encrypted, but the
     // server isn't authenticated. docs/05-firebase.md covers doing it right.
@@ -353,8 +403,13 @@ void loop() {
   serviceWifi();
   serviceDemoDesk();
   serviceStatusTicker();
+
   if (cloudConfigured() && WiFi.status() == WL_CONNECTED) {
-    pushDemoDeskNameOnce();
+    if (!timeSynced()) return;  // no uploads until last_updated can be real
+    if (!timeSyncAnnounced) {
+      timeSyncAnnounced = true;
+      Serial.printf("[time] NTP synced: %lu\n", (unsigned long)time(nullptr));
+    }
     serviceDemoCleanup();
     drainOneDirtyDesk();
     if ((int32_t)(millis() - lastHeartbeatMs) > (int32_t)HUB_HEARTBEAT_MS) {

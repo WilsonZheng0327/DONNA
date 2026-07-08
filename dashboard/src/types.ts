@@ -1,23 +1,27 @@
-// Mirrors what the hub writes into Firebase — see docs/04-protocol.md.
+// Mirrors the team schema the hub writes:
+//   /{country}/{site}/{office}/{floor}/{deskId} -> DeskRecord
+// Field names/units match the pre-existing records (last_updated = epoch
+// SECONDS); everything beyond occupied/last_updated is our telemetry.
 export interface DeskRecord {
-  nodeId: number;
   occupied: boolean;
-  distanceMm: number;
-  batteryMv: number;
-  seq: number;
-  rssi: number;
-  snr: number;
-  lastSeenAt: number; // epoch ms, stamped by the RTDB server, not the hub
+  last_updated: number; // epoch seconds
+  distance_mm?: number;
+  battery_mv?: number;
+  seq?: number;
+  node_id?: number;
+  rssi?: number;
+  snr?: number;
 }
+
+// One office subtree: floor -> deskId -> record
+export type OfficeTree = Record<string, Record<string, DeskRecord>>;
 
 export interface HubRecord {
-  lastSeenAt: number;
+  last_updated: number; // epoch seconds
   ip?: string;
-  wifiRssi?: number;
-  uptimeS?: number;
+  wifi_rssi?: number;
+  uptime_s?: number;
 }
-
-export type DeskConfigMap = Record<string, { name?: string }>;
 
 export type DeskStatus = "free" | "occupied" | "offline";
 
@@ -25,3 +29,6 @@ export type DeskStatus = "free" | "occupied" | "offline";
 export const DESK_OFFLINE_AFTER_MS = 90_000;
 // The hub heartbeats every 20 s.
 export const HUB_OFFLINE_AFTER_MS = 60_000;
+
+// The hub's self-test desk id — rendered with a friendlier label.
+export const SELFTEST_DESK_ID = "_SELFTEST";

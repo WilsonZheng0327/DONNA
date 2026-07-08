@@ -21,6 +21,9 @@
 #ifndef NODE_ID
 #error "Build with -DNODE_ID=n — use the node1/node2/node3 envs in platformio.ini"
 #endif
+#if !defined(DESK_FLOOR) || !defined(DESK_ID_STR)
+#error "Build with -DDESK_FLOOR and -DDESK_ID_STR — see the envs in platformio.ini"
+#endif
 
 SX1262 radio = new Module(PIN_LORA_NSS, PIN_LORA_DIO1, PIN_LORA_RESET, PIN_LORA_BUSY);
 VL53L0X tof;
@@ -56,6 +59,13 @@ static void sendState() {
   pkt.occupied   = occupied ? 1 : 0;
   pkt.distanceMm = lastDistanceMm;
   pkt.batteryMv  = 0;  // no battery sensing wired up yet
+  // This node's address in the world — the hub files the report under
+  // /{country}/{site}/{office}/{floor}/{deskId} verbatim.
+  packStr(pkt.country,   sizeof pkt.country,   DESK_COUNTRY);
+  packStr(pkt.site,      sizeof pkt.site,      DESK_SITE);
+  packStr(pkt.office,    sizeof pkt.office,    DESK_OFFICE);
+  packStr(pkt.floorCode, sizeof pkt.floorCode, DESK_FLOOR);
+  packStr(pkt.deskId,    sizeof pkt.deskId,    DESK_ID_STR);
 
   digitalWrite(PIN_LED, LOW);
   // Blocking call, ~180 ms at SF9/125kHz for our 13 bytes — that IS the
@@ -109,7 +119,8 @@ void setup() {
   pinMode(PIN_LED, OUTPUT);
   digitalWrite(PIN_LED, HIGH);
 
-  Serial.printf("\n=== deskfinder node %u ===\n", NODE_ID);
+  Serial.printf("\n=== deskfinder node %u — desk %s/%s/%s/%s/%s ===\n", NODE_ID,
+                DESK_COUNTRY, DESK_SITE, DESK_OFFICE, DESK_FLOOR, DESK_ID_STR);
 
   // ToF sensor first — fail loud if the Grove cable is loose.
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);

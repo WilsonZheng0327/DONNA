@@ -1,21 +1,22 @@
 # 05 — Firebase Realtime Database setup
 
-One-time, ~5 minutes, all in the browser.
+One-time, ~5 minutes, all in the browser. (Already done for this project —
+kept for reference / recreating the setup.)
 
 ## Create the database
 
-1. https://console.firebase.google.com → **Add project** → name it
-   (e.g. `deskfinder`) → Google Analytics off → create.
+1. https://console.firebase.google.com → **Add project** → name it →
+   Google Analytics off → create.
 2. Left sidebar **Build → Realtime Database** → **Create database** →
    pick the default US location → start in **locked mode**.
 3. Copy the database URL shown at the top, e.g.
-   `https://deskfinder-a1b2c-default-rtdb.firebaseio.com/`.
+   `https://donna-ead10-default-rtdb.firebaseio.com/`.
    The hostname part goes into `firmware/hub/include/secrets.h`
    (`FIREBASE_HOST`) and the full URL into `dashboard/.env.local`.
 
 ## Rules: public read, hub-only write
 
-**Realtime Database → Rules** tab, replace with:
+**Realtime Database → Rules** tab:
 
 ```json
 {
@@ -38,61 +39,72 @@ prototype dashboard, revisit before real deployment.
 > heavy on a microcontroller; secret-in-query-string is the standard embedded
 > compromise.
 
+## The data layout (team schema)
+
+Desks live under location paths, hub liveness at the top level:
+
+```
+/US/SVL/CRBN100/4/4T434G   ← {country}/{site}/{office}/{floor}/{deskId}
+    occupied: true
+    last_updated: 1783486250        (epoch SECONDS)
+    distance_mm, rssi, snr, seq, node_id, battery_mv   (our telemetry)
+/hub
+    last_updated, ip, wifi_rssi, uptime_s
+```
+
+See docs/04-protocol.md for why each field exists.
+
 ## How the hub talks to it (no SDK)
 
 RTDB has a plain REST face: any path + `.json` is an endpoint. The hub does
 
 ```
-PATCH https://<host>/desks/node-1.json?auth=<secret>
-{"occupied":true, "rssi":-62.5, "lastSeenAt":{".sv":"timestamp"}, ...}
+PATCH https://<host>/US/SVL/CRBN100/4/4T434G.json?auth=<secret>
+{"occupied":true, "last_updated":1783486250, "rssi":-62.5, ...}
 ```
 
 - **PATCH** merges fields; PUT would replace the object (dropping fields
   written by others), POST would append under a random key.
-- **`{".sv":"timestamp"}`** is a *server value*: the database substitutes its
-  own epoch-milliseconds on write. The ESP32 has no battery-backed clock, so
-  we never trust it to know what time it is.
+- **`last_updated`** is stamped by the hub from NTP-synced time, in seconds,
+  matching the records your teammate already writes. The hub refuses to
+  upload until its clock has synced (it boots thinking it's 1970).
 - The connection is HTTPS with `setInsecure()` — encrypted but the server
-  certificate isn't verified, because the MCU lacks a CA store and a correct
-  clock at first boot. To harden later: embed Google's root CA and call
-  `tls.setCACert(...)` after NTP sync.
+  certificate isn't verified, because the MCU lacks a CA store. To harden
+  later: embed Google's root CA and call `tls.setCACert(...)`.
 
 ## Test it without any hardware
 
 **Easiest check — the hub does it for you:** until it hears a first real
-node over LoRa, the flashed hub publishes a self-test desk (`node-0`,
-labeled "HUB SELF-TEST") that flips occupied/free every 10 seconds, and
-refreshes `/hub` every 20 seconds. If that card toggles on the dashboard,
-the entire hub → WiFi → Firebase → dashboard chain works. It disarms and
-deletes itself once real node traffic arrives (`DEMO_DESK_ENABLED` in
-`firmware/hub/include/config.h` turns it off manually).
+node over LoRa, the flashed hub publishes a self-test desk at
+`/US/SVL/CRBN100/4/_SELFTEST` that flips occupied/free every 10 seconds,
+and refreshes `/hub` every 20 seconds. If that card toggles on the
+dashboard, the entire hub → WiFi → Firebase → dashboard chain works. It
+disarms and deletes itself once real node traffic arrives
+(`DEMO_DESK_ENABLED` in `firmware/hub/include/config.h` turns it off).
 
-You can also fake a node from your shell — great for developing the
-dashboard before any firmware is flashed (replace host + secret):
+You can also fake a desk from your shell (replace host + secret):
 
 ```bash
-curl -X PATCH "https://HOST/desks/node-1.json?auth=SECRET" \
-  -d '{"nodeId":1,"occupied":true,"distanceMm":640,"rssi":-58.2,"snr":9.5,"seq":1,"batteryMv":0,"lastSeenAt":{".sv":"timestamp"}}'
-
-curl -X PATCH "https://HOST/hub.json?auth=SECRET" \
-  -d '{"lastSeenAt":{".sv":"timestamp"},"ip":"fake","wifiRssi":-50,"uptimeS":1}'
-
-# name a desk (read by the dashboard):
-curl -X PATCH "https://HOST/config/desks/node-1.json?auth=SECRET" \
-  -d '{"name":"Window desk"}'
+curl -X PATCH "https://HOST/US/SVL/CRBN100/4/FAKE01.json?auth=SECRET" \
+  -d '{"occupied":true,"last_updated":'"$(date +%s)"',"distance_mm":640,"node_id":9}'
 
 # read everything back (public, no auth):
-curl "https://HOST/.json?print=pretty"
+curl "https://HOST/US/SVL/CRBN100.json?print=pretty"
+
+# clean up the fake desk:
+curl -X DELETE "https://HOST/US/SVL/CRBN100/4/FAKE01.json?auth=SECRET"
 ```
 
 ## How the dashboard reads
 
 The web app uses the Firebase JS SDK with only `databaseURL` configured and
-subscribes with `onValue(ref(db, "desks"), ...)` — the SDK holds a websocket
-open and pushes every change in real time. No polling, no backend of ours.
+subscribes with `onValue(ref(db, "US/SVL/CRBN100"), ...)` — the SDK holds a
+websocket open and pushes every change in real time. Which office it shows
+comes from `VITE_OFFICE_PATH` in `.env.local` (defaults to US/SVL/CRBN100).
+No polling, no backend of ours.
 
 ## Free-tier arithmetic
 
-Ten desks heartbeating every 30 s ≈ 29k writes/day of ~150 bytes — around
-4 MB/day of raw payload against a 10 GB/month free download quota and
-unlimited writes. Not a concern at this scale.
+Ten desks heartbeating every 30 s ≈ 29k writes/day of ~180 bytes — a few
+MB/day against a 10 GB/month free download quota and unlimited writes. Not
+a concern at this scale.
