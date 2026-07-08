@@ -64,6 +64,19 @@ static uint32_t lastPushAttemptMs = 0;
 static uint32_t ledOffAtMs        = 0;
 static bool     wasConnected      = false;
 
+static bool          realPacketSeen = false;  // first real packet retires the demo
+static unsigned long totalRxCount   = 0;
+static uint32_t      lastDemoMs     = 0;
+static uint16_t      demoSeq        = 0;
+static bool          demoOccupied   = false;
+static bool          demoNamePushed = false;
+static uint32_t      lastDemoNameAttemptMs = 0;
+static bool          demoCleanupPending = false;
+static uint32_t      lastCleanupAttemptMs = 0;
+static uint32_t      lastTickerMs   = 0;
+
+static bool demoActive() { return DEMO_DESK_ENABLED && !realPacketSeen; }
+
 static bool cloudConfigured() {
   return strlen(WIFI_SSID) > 0 && strlen(FIREBASE_HOST) > 0;
 }
@@ -93,15 +106,26 @@ static void haltWithRadioError(int16_t code) {
   }
 }
 
+static String firebaseUrl(const String& path) {
+  String url = String("https://") + FIREBASE_HOST + path + ".json";
+  if (strlen(FIREBASE_AUTH) > 0) url += String("?auth=") + FIREBASE_AUTH;
+  return url;
+}
+
 // One PATCH to https://<host><path>.json — RTDB's REST API. PATCH merges
 // fields instead of replacing the whole object like PUT would.
 static int firebasePatch(const String& path, const String& body) {
-  String url = String("https://") + FIREBASE_HOST + path + ".json";
-  if (strlen(FIREBASE_AUTH) > 0) url += String("?auth=") + FIREBASE_AUTH;
-  http.begin(tls, url);
+  http.begin(tls, firebaseUrl(path));
   http.addHeader("Content-Type", "application/json");
   int code = http.sendRequest("PATCH", body);
   http.end();  // setReuse(true) keeps the TLS session alive between calls
+  return code;
+}
+
+static int firebaseDelete(const String& path) {
+  http.begin(tls, firebaseUrl(path));
+  int code = http.sendRequest("DELETE");
+  http.end();
   return code;
 }
 
@@ -153,6 +177,70 @@ static void sendHubHeartbeat() {
   Serial.printf("[fb] heartbeat: HTTP %d\n", code);
 }
 
+// Shared by real radio traffic and the self-test desk, so the demo exercises
+// the exact same table + Firebase path a real node would.
+static void recordPacket(const DeskPacket& pkt, float rssi, float snr) {
+  DeskState& d = desks[pkt.nodeId];
+  d.pkt = pkt;
+  d.rssi = rssi;
+  d.snr  = snr;
+  d.lastRxMs = millis();
+  d.seen  = true;
+  d.dirty = true;
+  d.rxCount++;
+}
+
+static void serviceDemoDesk() {
+  if (!demoActive()) return;
+  if ((int32_t)(millis() - lastDemoMs) < (int32_t)DEMO_DESK_INTERVAL_MS) return;
+  lastDemoMs = millis();
+  demoOccupied = !demoOccupied;
+
+  DeskPacket pkt{};
+  pkt.magic      = PACKET_MAGIC;
+  pkt.version    = PROTOCOL_VERSION;
+  pkt.nodeId     = DEMO_DESK_NODE_ID;
+  pkt.seq        = demoSeq++;
+  pkt.occupied   = demoOccupied ? 1 : 0;
+  pkt.distanceMm = demoOccupied ? 615 : 1830;  // plausible sat-down / empty readings
+  recordPacket(pkt, 0, 0);
+  Serial.printf("[demo] self-test desk node-%u -> %s (retires when a real node is heard)\n",
+                DEMO_DESK_NODE_ID, demoOccupied ? "OCCUPIED" : "free");
+}
+
+static void serviceDemoCleanup() {
+  if (!demoCleanupPending) return;
+  if ((int32_t)(millis() - lastCleanupAttemptMs) < 3000) return;
+  lastCleanupAttemptMs = millis();
+  if (firebaseDelete(String("/desks/node-") + DEMO_DESK_NODE_ID) == 200) {
+    firebaseDelete(String("/config/desks/node-") + DEMO_DESK_NODE_ID);
+    demoCleanupPending = false;
+    Serial.println("[demo] self-test desk removed from Firebase");
+  }
+}
+
+// Label the fake desk in /config so the dashboard card says what it is.
+static void pushDemoDeskNameOnce() {
+  if (!demoActive() || demoNamePushed) return;
+  if ((int32_t)(millis() - lastDemoNameAttemptMs) < 5000) return;
+  lastDemoNameAttemptMs = millis();
+  int code = firebasePatch(String("/config/desks/node-") + DEMO_DESK_NODE_ID,
+                           "{\"name\":\"HUB SELF-TEST\"}");
+  demoNamePushed = (code == 200);
+}
+
+static void serviceStatusTicker() {
+  if ((int32_t)(millis() - lastTickerMs) < (int32_t)STATUS_TICKER_MS) return;
+  lastTickerMs = millis();
+  String wifiState = !cloudConfigured()   ? String("no secrets.h")
+                     : WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString()
+                                                     : String("connecting");
+  Serial.printf("[status] up=%lus wifi=%s lora_rx=%lu demo=%s heap=%lu\n",
+                millis() / 1000, wifiState.c_str(), totalRxCount,
+                demoActive() ? "on" : "off",
+                (unsigned long)ESP.getFreeHeap());
+}
+
 static void handlePacket() {
   DeskPacket pkt;
   size_t len = radio.getPacketLength();
@@ -175,16 +263,17 @@ static void handlePacket() {
   }
   if (pkt.nodeId > MAX_NODE_ID) return;
 
+  if (!realPacketSeen && demoActive() && demoSeq > 0) {
+    Serial.println("[demo] real node heard - self-test desk retired");
+    demoCleanupPending = true;  // remove the fake desk from Firebase too
+  }
+  realPacketSeen = true;
+  totalRxCount++;
+
   DeskState& d = desks[pkt.nodeId];
   // seq is uint16 and so is this subtraction — wraparound-safe.
   uint16_t lost = d.seen ? (uint16_t)(pkt.seq - d.pkt.seq - 1) : 0;
-  d.pkt = pkt;
-  d.rssi = rssi;
-  d.snr  = snr;
-  d.lastRxMs = millis();
-  d.seen  = true;
-  d.dirty = true;
-  d.rxCount++;
+  recordPacket(pkt, rssi, snr);
 
   blinkLed();
   Serial.printf("[lora] node %u seq=%u %s dist=%umm rssi=%.1fdBm snr=%.1fdB%s\n",
@@ -262,7 +351,11 @@ void loop() {
     handlePacket();
   }
   serviceWifi();
+  serviceDemoDesk();
+  serviceStatusTicker();
   if (cloudConfigured() && WiFi.status() == WL_CONNECTED) {
+    pushDemoDeskNameOnce();
+    serviceDemoCleanup();
     drainOneDirtyDesk();
     if ((int32_t)(millis() - lastHeartbeatMs) > (int32_t)HUB_HEARTBEAT_MS) {
       lastHeartbeatMs = millis();

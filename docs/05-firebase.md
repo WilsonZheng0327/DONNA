@@ -59,8 +59,16 @@ PATCH https://<host>/desks/node-1.json?auth=<secret>
 
 ## Test it without any hardware
 
-You can fake a node from your shell — great for developing the dashboard
-before the LoRa side is up (replace host + secret):
+**Easiest check — the hub does it for you:** until it hears a first real
+node over LoRa, the flashed hub publishes a self-test desk (`node-0`,
+labeled "HUB SELF-TEST") that flips occupied/free every 10 seconds, and
+refreshes `/hub` every 20 seconds. If that card toggles on the dashboard,
+the entire hub → WiFi → Firebase → dashboard chain works. It disarms and
+deletes itself once real node traffic arrives (`DEMO_DESK_ENABLED` in
+`firmware/hub/include/config.h` turns it off manually).
+
+You can also fake a node from your shell — great for developing the
+dashboard before any firmware is flashed (replace host + secret):
 
 ```bash
 curl -X PATCH "https://HOST/desks/node-1.json?auth=SECRET" \

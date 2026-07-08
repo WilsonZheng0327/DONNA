@@ -26,5 +26,17 @@ constexpr uint32_t HUB_HEARTBEAT_MS = 20000;
 
 constexpr uint32_t WIFI_RETRY_MS = 8000;
 
+// Hub self-test: until the first REAL node packet arrives over LoRa, the hub
+// invents desk "node-0" and flips it occupied/free on this interval, pushed
+// through the exact same code path as radio traffic. Lets you verify
+// hub -> WiFi -> Firebase -> dashboard with zero node hardware.
+constexpr bool     DEMO_DESK_ENABLED     = true;
+constexpr uint8_t  DEMO_DESK_NODE_ID     = 0;
+constexpr uint32_t DEMO_DESK_INTERVAL_MS = 10000;
+
+// Proof-of-life line on the serial monitor — works before WiFi is even
+// configured, so it's the very first thing to check after flashing.
+constexpr uint32_t STATUS_TICKER_MS = 10000;
+
 // Highest nodeId we accept; keeps the state table small and bounded.
 constexpr uint8_t MAX_NODE_ID = 32;

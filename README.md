@@ -69,6 +69,10 @@ Name desks on the board (optional):
       run `udevadm info -q property /dev/ttyACM0` — if it's not a XIAO
       ESP32S3, retarget `firmware/node/platformio.ini` + pin config.
 - [x] Dashboard — builds; needs `.env.local`
+- [x] Hub self-test — with no nodes built yet, the hub publishes fake desk
+      `node-0` ("HUB SELF-TEST") flipping every 10 s; watching it toggle on
+      the dashboard verifies hub→WiFi→Firebase→dashboard end to end. It
+      retires (and deletes itself from Firebase) when a real node is heard.
 - [ ] Firebase project (manual, needs your Google account)
 - [ ] Sensor threshold tuning at the real desk (`docs/06-tof-sensor.md`)
 - [ ] Battery reporting (protocol field reserved, unwired)
