@@ -151,7 +151,7 @@ export default function App() {
         <span>{connected ? "db link up" : "db link down"}</span>
         <span>{OFFICE_PATH}</span>
         {hub?.ip && <span>hub {hub.ip} · wifi {hub.wifi_rssi} dBm</span>}
-        <span>deskfinder</span>
+        <span>DONNA</span>
       </footer>
     </main>
   );
@@ -169,7 +169,7 @@ function Header(props: {
       <div className="head__brand">
         <span className={`head__dot ${props.live ? "head__dot--live" : ""}`} />
         <h1>
-          DESK<span>FINDER</span>
+          DON<span>NA</span>
         </h1>
         <span className="head__office">{OFFICE_PATH.split("/").pop()}</span>
       </div>

@@ -1,4 +1,4 @@
-# deskfinder
+# DONNA
 
 Find a free desk without walking the floor. A time-of-flight sensor under
 each desk decides *occupied or not*, shouts it over LoRa to a hub, the hub

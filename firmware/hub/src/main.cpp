@@ -351,7 +351,7 @@ void setup() {
   pinMode(PIN_LED, OUTPUT);
   digitalWrite(PIN_LED, HIGH);  // off
 
-  Serial.println("\n=== deskfinder hub ===");
+  Serial.println("\n=== DONNA hub ===");
   Serial.printf("LoRa %.1f MHz, BW %.0f kHz, SF%u, CR4/%u, sync 0x%02X, proto v%u\n",
                 LORA_FREQ_MHZ, LORA_BW_KHZ, LORA_SF, LORA_CR, LORA_SYNC_WORD,
                 PROTOCOL_VERSION);

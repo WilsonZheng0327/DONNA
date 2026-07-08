@@ -119,7 +119,7 @@ void setup() {
   pinMode(PIN_LED, OUTPUT);
   digitalWrite(PIN_LED, HIGH);
 
-  Serial.printf("\n=== deskfinder node %u — desk %s/%s/%s/%s/%s ===\n", NODE_ID,
+  Serial.printf("\n=== DONNA node %u — desk %s/%s/%s/%s/%s ===\n", NODE_ID,
                 DESK_COUNTRY, DESK_SITE, DESK_OFFICE, DESK_FLOOR, DESK_ID_STR);
 
   // ToF sensor first — fail loud if the Grove cable is loose.
