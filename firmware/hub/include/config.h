@@ -1,0 +1,30 @@
+#pragma once
+
+// ---------------------------------------------------------------------------
+// XIAO ESP32S3 <-> Wio-SX1262 wiring (fixed by the board-to-board connector).
+// These are ESP32-S3 GPIO numbers, verified against Seeed's schematic and the
+// Meshtastic port for this exact kit. See docs/01-hardware.md for the roles.
+// ---------------------------------------------------------------------------
+constexpr int PIN_LORA_SCK   = 7;   // SPI clock
+constexpr int PIN_LORA_MISO  = 8;   // SPI radio -> MCU
+constexpr int PIN_LORA_MOSI  = 9;   // SPI MCU -> radio
+constexpr int PIN_LORA_NSS   = 41;  // SPI chip select (active low)
+constexpr int PIN_LORA_DIO1  = 39;  // radio interrupt line: "packet arrived"
+constexpr int PIN_LORA_RESET = 42;  // hard reset into the radio
+constexpr int PIN_LORA_BUSY  = 40;  // radio "still working, don't talk to me"
+// Must be driven HIGH to power the antenna's TX/RX switch. Forget this and
+// both radios "work" (SPI answers fine) but the antenna is disconnected.
+constexpr int PIN_LORA_ANT_SW = 38;
+
+// XIAO ESP32S3 user LED (yellow, next to USB). Wired active-LOW:
+// LOW = on. We blink it on every received packet.
+constexpr int PIN_LED = 21;
+
+// How often the hub writes its own liveness record to /hub in Firebase.
+// The dashboard uses this to show "hub offline" instead of stale desk data.
+constexpr uint32_t HUB_HEARTBEAT_MS = 20000;
+
+constexpr uint32_t WIFI_RETRY_MS = 8000;
+
+// Highest nodeId we accept; keeps the state table small and bounded.
+constexpr uint8_t MAX_NODE_ID = 32;
