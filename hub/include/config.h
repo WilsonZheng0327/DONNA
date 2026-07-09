@@ -45,5 +45,7 @@ constexpr uint32_t DEMO_DESK_INTERVAL_MS = 10000;
 // configured, so it's the very first thing to check after flashing.
 constexpr uint32_t STATUS_TICKER_MS = 10000;
 
-// Highest nodeId we accept; keeps the state table small and bounded.
-constexpr uint8_t MAX_NODE_ID = 32;
+// How many distinct desks the hub tracks at once. Desks are keyed by their
+// location path (not by nodeId), so this just bounds the state table; raise it
+// if a single hub ever serves more desks than this.
+constexpr uint8_t MAX_DESKS = 64;

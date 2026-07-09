@@ -48,9 +48,10 @@ SX1262 radio = new Module(PIN_LORA_NSS, PIN_LORA_DIO1, PIN_LORA_RESET, PIN_LORA_
 static volatile bool packetArrived = false;
 static void IRAM_ATTR onPacketArrived() { packetArrived = true; }
 
-// Last known state of every desk, indexed by nodeId. `dirty` marks entries
-// Firebase hasn't seen yet; the loop uploads at most one per pass so a slow
-// HTTPS request never starves radio servicing for long.
+// Last known state of every desk, keyed by its location path (nodes carry their
+// own identity now, so nodeId is telemetry only and no longer a table index).
+// `dirty` marks entries Firebase hasn't seen yet; the loop uploads at most one
+// per pass so a slow HTTPS request never starves radio servicing for long.
 struct DeskState {
   bool       seen  = false;
   bool       dirty = false;
@@ -61,7 +62,22 @@ struct DeskState {
   uint32_t   lastRxMs = 0;
   uint32_t   rxCount  = 0;
 };
-static DeskState desks[MAX_NODE_ID + 1];
+static DeskState desks[MAX_DESKS];
+
+// Find the desk with this path, or hand back a free slot for a new one. Returns
+// nullptr only when the table is full (more distinct desks than MAX_DESKS). A
+// slot is "in use" once recordPacket has set its `seen` flag.
+static DeskState* findOrAllocDesk(const String& path) {
+  DeskState* freeSlot = nullptr;
+  for (int i = 0; i < MAX_DESKS; i++) {
+    if (desks[i].seen) {
+      if (desks[i].fbPath == path) return &desks[i];
+    } else if (!freeSlot) {
+      freeSlot = &desks[i];
+    }
+  }
+  return freeSlot;
+}
 
 static WiFiClientSecure tls;
 static HTTPClient http;
@@ -161,7 +177,12 @@ static bool sanitizeField(const char* src, size_t rawLen, String& out) {
 // the exact same table + Firebase path a real node would.
 static void recordPacket(const DeskPacket& pkt, float rssi, float snr,
                          const String& fbPath, const String& deskId) {
-  DeskState& d = desks[pkt.nodeId];
+  DeskState* dp = findOrAllocDesk(fbPath);
+  if (!dp) {
+    Serial.printf("[hub] desk table full (%u), dropped %s\n", MAX_DESKS, fbPath.c_str());
+    return;
+  }
+  DeskState& d = *dp;
   d.pkt = pkt;
   d.fbPath = fbPath;
   d.deskId = deskId;
@@ -173,8 +194,7 @@ static void recordPacket(const DeskPacket& pkt, float rssi, float snr,
   d.rxCount++;
 }
 
-static void pushDesk(uint8_t nodeId) {
-  DeskState& d = desks[nodeId];
+static void pushDesk(DeskState& d) {
   JsonDocument doc;
   // Team schema fields first — same names and units (epoch seconds) as the
   // records already in this database.
@@ -202,10 +222,10 @@ static void pushDesk(uint8_t nodeId) {
 static void drainOneDirtyDesk() {
   // After a failure, back off briefly instead of hammering the network.
   if ((int32_t)(millis() - lastPushAttemptMs) < 500) return;
-  for (uint8_t id = 0; id <= MAX_NODE_ID; id++) {
-    if (desks[id].dirty) {
+  for (int i = 0; i < MAX_DESKS; i++) {
+    if (desks[i].dirty) {
       lastPushAttemptMs = millis();
-      pushDesk(id);
+      pushDesk(desks[i]);
       return;
     }
   }
@@ -295,7 +315,6 @@ static void handlePacket() {
                   pkt.nodeId, pkt.version, PROTOCOL_VERSION);
     return;
   }
-  if (pkt.nodeId > MAX_NODE_ID) return;
 
   String country, site, office, floorCode, deskId;
   if (!sanitizeField(pkt.country,   sizeof pkt.country,   country)   ||
@@ -315,9 +334,11 @@ static void handlePacket() {
   realPacketSeen = true;
   totalRxCount++;
 
-  DeskState& d = desks[pkt.nodeId];
+  // Look up the desk's prior state (by path) before recordPacket overwrites it,
+  // so we can report how many packets were lost since we last heard from it.
+  DeskState* prev = findOrAllocDesk(path);
   // seq is uint16 and so is this subtraction — wraparound-safe.
-  uint16_t lost = d.seen ? (uint16_t)(pkt.seq - d.pkt.seq - 1) : 0;
+  uint16_t lost = (prev && prev->seen) ? (uint16_t)(pkt.seq - prev->pkt.seq - 1) : 0;
   recordPacket(pkt, rssi, snr, path, deskId);
 
   blinkLed();

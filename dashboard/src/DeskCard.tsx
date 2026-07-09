@@ -1,4 +1,4 @@
-import { SELFTEST_DESK_ID, type DeskRecord, type DeskStatus } from "./types";
+import { type DeskRecord, type DeskStatus } from "./types";
 
 function timeAgo(ms: number): string {
   if (ms < 0) ms = 0;
@@ -18,9 +18,9 @@ function rssiBars(rssi: number): number {
 }
 
 const STATUS_LABEL: Record<DeskStatus, string> = {
-  free: "FREE",
-  occupied: "IN USE",
-  offline: "OFFLINE",
+  free: "Available",
+  occupied: "Occupied",
+  offline: "Offline",
 };
 
 interface Props {
@@ -38,7 +38,6 @@ export default function DeskCard({
   serverNow,
   index,
 }: Props) {
-  const isSelfTest = deskId === SELFTEST_DESK_ID;
   const bars = rssiBars(rec.rssi ?? -120);
   const agoMs = serverNow - (rec.last_updated ?? 0) * 1000;
   return (
@@ -48,7 +47,8 @@ export default function DeskCard({
     >
       <header className="card__head">
         <span className="card__name">
-          {isSelfTest ? "HUB SELF-TEST" : deskId}
+          <span className="material-symbols-outlined">chair</span>
+          <span>{deskId}</span>
         </span>
         {rec.node_id != null && (
           <span className="card__id">

@@ -19,7 +19,8 @@ Three deployable pieces, three toolchains:
   The receiver; stays on the ESP32S3 because it needs WiFi to reach Firebase.
   (Firebase path `/hub`, `HUB_HEARTBEAT_MS`, dashboard `HubRecord` — all "hub".)
 - `node/` — PlatformIO / Arduino / C++ for Seeed **XIAO nRF52840** + Wio-SX1262 kit
-  (SKU 102010710), one build env per desk. No WiFi (nodes only transmit LoRa).
+  (SKU 102010710), one shared build env flashed per desk by its desk id via
+  `node/flash.sh`. No WiFi (nodes only transmit LoRa).
 - `dashboard/` — Vite + React 19 + Firebase JS SDK
 - `docs/` — numbered hardware/protocol walkthroughs; read these before touching firmware
 
@@ -43,12 +44,21 @@ other. Rules when editing it:
   `/{country}/{site}/{office}/{floor}/{deskId}` (e.g. `/US/SVL/CRBN100/4/4T434G`).
   Moving or adding a desk never touches hub firmware.
 
-## Desk identity lives in the node build, not in code
+## Desk identity is passed at flash time, not baked into envs
 
-Per-desk floor + desk ID are compile-time `-D` flags in `node/platformio.ini`,
-one env per desk (`node1`, `node2`, ...). Building-wide constants (country/site/office)
-are `#define`s in `node/include/config.h`. **Add a desk = copy an env block with
-new `NODE_ID`/`DESK_FLOOR`/`DESK_ID_STR` and flash it.**
+A desk's full identity (country/site/office/floor/deskId) is passed to
+`node/flash.sh` as one identifier — the same path a desk uses in the db/ui:
+
+```bash
+cd node && ./flash.sh US-SVL-CRBN100-4-4T434G   # -> /US/SVL/CRBN100/4/4T434G
+```
+
+The script splits the id on its **first four dashes** (so the deskId may itself
+contain dashes), turns the parts into `-D` build flags, derives a stable
+`NODE_ID` (1..254) from the id for the heartbeat stagger + `node_id` telemetry,
+and uploads. There is a single generic `[env:node]`; the country/site/office
+values in `node/include/config.h` are `#ifndef`-guarded defaults that the flags
+override. **Add a desk = just flash it with its id — no env or code editing.**
 
 ## Timestamps and the NTP gate
 
@@ -70,7 +80,7 @@ pio run -t upload          # flash over USB
 pio device monitor         # serial logs @ 115200 (start here after any flash)
 
 cd node                    # XIAO nRF52840, platform nordicnrf52 (first build pulls a large toolchain)
-pio run -e node1 -t upload # flash a specific desk env; node2, node3, ...
+./flash.sh US-SVL-CRBN100-4-4T434G   # flash a desk by its id (add "build" to compile only)
 ```
 
 The hub builds and runs the LoRa side even without `secrets.h` (radio-only, prints

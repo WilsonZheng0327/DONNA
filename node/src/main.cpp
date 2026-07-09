@@ -20,10 +20,10 @@
 #include "protocol.h"
 
 #ifndef NODE_ID
-#error "Build with -DNODE_ID=n — use the node1/node2/node3 envs in platformio.ini"
+#error "Build with -DNODE_ID=n — flash via ./flash.sh <COUNTRY-SITE-OFFICE-FLOOR-DESKID>"
 #endif
 #if !defined(DESK_FLOOR) || !defined(DESK_ID_STR)
-#error "Build with -DDESK_FLOOR and -DDESK_ID_STR — see the envs in platformio.ini"
+#error "Build with -DDESK_FLOOR and -DDESK_ID_STR — flash via ./flash.sh <desk-id>"
 #endif
 
 SX1262 radio = new Module(PIN_LORA_NSS, PIN_LORA_DIO1, PIN_LORA_RESET, PIN_LORA_BUSY);
@@ -107,6 +107,50 @@ static void dumpTofGrid(int zones) {
     }
     Serial.println();
   }
+}
+
+// TEMPORARY calibration dump (gated by CALIBRATION_MODE). Prints one full
+// frame in as much detail as the sensor gives: the distance_mm grid, the
+// matching target_status grid, and a summary line. Used to read off the
+// numbers a seated person produces so thresholds can be picked. See config.h.
+static void dumpCalibrationFrame(int zones) {
+  const int side = (zones == 64) ? 8 : 4;
+
+  uint16_t nearest = 0xFFFF, farthest = 0;
+  int valid = 0, inWindow = 0;
+  for (int i = 0; i < zones; i++) {
+    const uint8_t st = tofFrame.target_status[i];
+    if (st != 5 && st != 9) continue;
+    valid++;
+    const uint16_t d = (uint16_t)tofFrame.distance_mm[i];
+    if (d < nearest)  nearest  = d;
+    if (d > farthest) farthest = d;
+    if (d >= TOF_MIN_MM && d <= TOF_OCCUPIED_MM) inWindow++;
+  }
+
+  Serial.println("[calib] distance_mm grid (. = no valid target):");
+  for (int r = 0; r < side; r++) {
+    Serial.print("  ");
+    for (int c = 0; c < side; c++) {
+      const int i = r * side + c;
+      const uint8_t st = tofFrame.target_status[i];
+      if (st == 5 || st == 9) Serial.printf("%6d", tofFrame.distance_mm[i]);
+      else                    Serial.print("     .");
+    }
+    Serial.println();
+  }
+  Serial.println("[calib] target_status grid (5/9 = valid):");
+  for (int r = 0; r < side; r++) {
+    Serial.print("  ");
+    for (int c = 0; c < side; c++) {
+      Serial.printf("%6d", tofFrame.target_status[r * side + c]);
+    }
+    Serial.println();
+  }
+  Serial.printf("[calib] valid=%2d/%d  nearest=%4u mm  farthest=%4u mm  in[%u-%u]=%2d\n\n",
+                valid, zones,
+                (nearest == 0xFFFF ? 0 : nearest), farthest,
+                TOF_MIN_MM, TOF_OCCUPIED_MM, inWindow);
 }
 
 // One sensor frame -> presence/absence evidence -> maybe flip `occupied`.
@@ -214,6 +258,35 @@ void setup() {
 void loop() {
   uint32_t now = millis();
   bool changed = false;
+
+  // TEMPORARY: for the first CALIBRATION_MS after boot, dump every fresh frame
+  // in full and skip the normal occupancy/TX path so the log stays readable.
+  // The window starts on the first loop() so it runs after sensor init, giving
+  // a clean CALIBRATION_MS of readings. See config.h CALIBRATION_MODE.
+  if (CALIBRATION_MODE) {
+    static uint32_t calibStartMs = 0;
+    static bool     calibDone    = false;
+    if (!calibDone) {
+      if (calibStartMs == 0) {
+        calibStartMs = now;
+        Serial.printf("\n[calib] === calibration burst: dumping frames for %lu ms ===\n"
+                      "[calib] sit in the chair now; read off the seated distances/zones.\n\n",
+                      (unsigned long)CALIBRATION_MS);
+      }
+      if (now - calibStartMs < CALIBRATION_MS) {
+        const int zones = (TOF_RESOLUTION == 64) ? 64 : 16;
+        if (tof.isDataReady()) {
+          tof.getRangingData(&tofFrame);
+          Serial.printf("[calib] t=%5lu ms\n", (unsigned long)(now - calibStartMs));
+          dumpCalibrationFrame(zones);
+        }
+        return;  // no occupancy logic, no TX during the burst
+      }
+      calibDone = true;
+      Serial.println("[calib] === calibration burst done; resuming normal operation ===");
+      lastTxMs = now;  // heartbeat from here, not from boot
+    }
+  }
 
   if (now - lastPollMs >= SENSOR_POLL_MS) {
     lastPollMs = now;

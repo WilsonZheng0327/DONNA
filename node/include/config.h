@@ -5,13 +5,20 @@
 // Where this node lives. These strings ride inside every LoRa packet and
 // become the desk's path in the database:
 //   /{COUNTRY}/{SITE}/{OFFICE}/{floor}/{deskId}  e.g. /US/SVL/CRBN100/4/4T434G
-// Building-wide values live here; the per-desk floor + desk ID come from the
-// node1/node2/... envs in platformio.ini, since they differ per device.
-// Allowed characters: letters, digits, _ and - (the hub drops anything else).
+// The values below are defaults; flash.sh passes the full desk identity
+// (country/site/office/floor/deskId) as -D build flags, which override these
+// via the #ifndef guards. Allowed characters: letters, digits, _ and - (the
+// hub drops anything else).
 // ---------------------------------------------------------------------------
+#ifndef DESK_COUNTRY
 #define DESK_COUNTRY "US"
+#endif
+#ifndef DESK_SITE
 #define DESK_SITE    "SVL"
+#endif
+#ifndef DESK_OFFICE
 #define DESK_OFFICE  "CRBN100"
+#endif
 
 // ---------------------------------------------------------------------------
 // Radio wiring — Seeed XIAO nRF52840 + Wio-SX1262 kit (SKU 102010710).
@@ -57,22 +64,28 @@ constexpr int PIN_I2C_SCL = 6;   // D6
 // 8x8 is more forgiving of exactly where the person sits in the cone.
 constexpr uint8_t  TOF_RESOLUTION  = 64;
 constexpr uint8_t  TOF_RANGING_HZ  = 15;
-// How many in-range zones count as "someone is there". 1 is most sensitive;
-// raise it to reject a single stray reflection (chair arm, cable).
-constexpr uint8_t  TOF_MIN_ZONES   = 1;
+// How many in-range zones count as "someone is there". This is the primary
+// occupied decision at the monitor-top mount, where distance alone can't tell
+// an empty chair from a person in it. Measured here: an empty chair in place
+// lights ~6-8 zones (just its back row) at ~810 mm, while a seated person fills
+// ~12-16 zones (whole torso, several rows). 10 sits in that gap, so an empty
+// chair reads free and a seated person reads occupied. Re-tune if remounted.
+constexpr uint8_t  TOF_MIN_ZONES   = 10;
 
 // Below the minimum it's usually the sensor's own cover glass reflecting.
-// The maximum depends on where you mount it: under the desk aimed at the
-// chair, ~1000 mm covers a seated person; facing the seat back, use less.
+// Kept deliberately WIDE at this mount: a seated person's zones span ~530-900 mm
+// (nearest ~650) and the chair back sits ~810 mm, while the wall behind reads
+// ~3600 mm. 1200 includes the whole seated person (and the chair) but excludes
+// the wall, so distance no longer separates chair from person - TOF_MIN_ZONES
+// does that. Re-tune if the sensor is remounted.
 constexpr uint16_t TOF_MIN_MM      = 40;
-constexpr uint16_t TOF_OCCUPIED_MM = 1000;
+constexpr uint16_t TOF_OCCUPIED_MM = 1200;
 
-// Debounce, in two directions with very different time constants:
+// Debounce, in two directions with different time constants:
 //  - occupy fast (2 s) so the dashboard reacts when someone sits down
-//  - vacate slow (30 s) so leaning away or standing up for a moment
-//    doesn't flap the desk back to "free"
-// NOTE: VACANT_AFTER_MS temporarily lowered to 500 ms for bench testing so the
-// free transition is instant — restore to 30000 before deploying.
+//  - vacate currently fast (500 ms) so the free transition is near-instant
+//    while testing. For deployment raise it (e.g. 30000) so leaning away or
+//    standing up for a moment doesn't flap the desk back to "free".
 constexpr uint32_t OCCUPY_AFTER_MS = 2000;
 constexpr uint32_t VACANT_AFTER_MS = 500;
 
@@ -89,3 +102,14 @@ constexpr uint32_t SENSOR_POLL_MS = 100;
 constexpr bool     TOF_DEBUG      = true;
 constexpr bool     TOF_DEBUG_GRID = false;
 constexpr uint32_t TOF_DEBUG_MS   = 500;
+
+// ---------------------------------------------------------------------------
+// TEMPORARY calibration burst. When on, the node spends its first
+// CALIBRATION_MS after boot dumping every fresh sensor frame in full (the 8x8
+// distance grid + per-zone status + a summary line) and does NOT transmit, so
+// you can sit in the chair and read off the distances/zones a seated person
+// produces, then pick TOF_MIN_MM / TOF_OCCUPIED_MM / TOF_MIN_ZONES from them.
+// Set CALIBRATION_MODE = false (or revert this block) to return to normal ops.
+// ---------------------------------------------------------------------------
+constexpr bool     CALIBRATION_MODE = false;
+constexpr uint32_t CALIBRATION_MS   = 10000;

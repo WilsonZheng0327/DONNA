@@ -44,7 +44,7 @@ A is invisible and theft-proof; B reads the person directly. Either way the
 decision in firmware counts how many zones land inside a distance window:
 
 ```
-zone in range  = TOF_MIN_MM (40) ≤ zone distance ≤ TOF_OCCUPIED_MM (1000)
+zone in range  = TOF_MIN_MM (40) ≤ zone distance ≤ TOF_OCCUPIED_MM (1200)
 presence       = (zones in range) ≥ TOF_MIN_ZONES
 ```
 
@@ -66,12 +66,13 @@ requires evidence _duration_ before flipping state, asymmetrically:
 
 - free → occupied after **2 s** of continuous presence (sit down → dashboard
   updates fast; walking past the cone doesn't trigger)
-- occupied → free after **30 s** of continuous absence (coffee refills don't
-  release your desk)
+- occupied → free after continuous absence — currently **500 ms** for bench
+  testing (near-instant free), intended to be raised (e.g. 30 s) for deployment
+  so coffee refills don't release your desk
 
 The asymmetry mirrors the asymmetric cost of being wrong: showing an
 occupied desk as free sends a person to a taken desk; the reverse merely
-hides one desk for 30 s.
+hides one desk briefly.
 
 ## Wiring (XIAO nRF52840 node)
 
