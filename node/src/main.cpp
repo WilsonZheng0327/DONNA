@@ -1,4 +1,5 @@
-// Desk node firmware — VL53L0X time-of-flight sensor + SX1262 LoRa TX.
+// Desk node firmware — VL53L5CX multizone time-of-flight sensor + SX1262 LoRa TX.
+// Board: Seeed XIAO nRF52840 + Wio-SX1262 kit.
 //
 // A node is deliberately dumb: measure distance, debounce it into a boolean
 // "occupied", and shout the result over LoRa. It never listens, never knows
@@ -13,7 +14,7 @@
 #include <SPI.h>
 #include <Wire.h>
 #include <RadioLib.h>
-#include <VL53L0X.h>
+#include <SparkFun_VL53L5CX_Library.h>
 
 #include "config.h"
 #include "protocol.h"
@@ -26,7 +27,16 @@
 #endif
 
 SX1262 radio = new Module(PIN_LORA_NSS, PIN_LORA_DIO1, PIN_LORA_RESET, PIN_LORA_BUSY);
-VL53L0X tof;
+
+// The radio owns the default SPI (which is SPIM3 on this core). The VL53L5CX
+// needs I2C on D6/D7 (D4/D5 are the radio's CS/RXEN on this kit), so we reuse
+// the core's second I2C bus `Wire1` — it lives on TWIM1, which shares nothing
+// with SPIM3 — and remap it to D6/D7 in setup(). (Wire1's default D17/D16 go to
+// the unused on-board IMU.) We reuse Wire1 rather than construct our own TwoWire
+// so we get the core's IRQ handler for that peripheral.
+#define tofWire Wire1
+SparkFun_VL53L5CX tof;
+VL53L5CX_ResultsData tofFrame;  // one grid of zone readings, filled per frame
 
 // Debounced output state + the raw evidence timers behind it.
 static bool     occupied        = false;
@@ -68,7 +78,7 @@ static void sendState() {
   packStr(pkt.deskId,    sizeof pkt.deskId,    DESK_ID_STR);
 
   digitalWrite(PIN_LED, LOW);
-  // Blocking call, ~180 ms at SF9/125kHz for our 13 bytes — that IS the
+  // Blocking call, ~280 ms at SF9/125kHz for our 43-byte packet — that IS the
   // airtime, the radio really is busy modulating the whole time.
   int16_t state = radio.transmit(reinterpret_cast<uint8_t*>(&pkt), sizeof(pkt));
   digitalWrite(PIN_LED, HIGH);
@@ -82,13 +92,29 @@ static void sendState() {
   lastTxMs = millis();
 }
 
-// One sensor reading -> presence/absence evidence -> maybe flip `occupied`.
+// One sensor frame -> presence/absence evidence -> maybe flip `occupied`.
+// The VL53L5CX reports a whole grid of zones; we reduce it to a boolean:
+// presence = at least TOF_MIN_ZONES zones see something inside the window.
+// lastDistanceMm reports the nearest valid zone, for tuning/telemetry.
 static bool updateOccupancy() {
-  uint16_t d = tof.readRangeContinuousMillimeters();
-  bool valid = !tof.timeoutOccurred() && d < 8000;  // >=8000 = out of range
-  if (valid) lastDistanceMm = d;
+  if (!tof.isDataReady()) return false;   // no fresh frame yet; nothing changes
+  tof.getRangingData(&tofFrame);
 
-  bool presence = valid && d >= TOF_MIN_MM && d <= TOF_OCCUPIED_MM;
+  const int zones = (TOF_RESOLUTION == 64) ? 64 : 16;
+  uint16_t nearest = 0xFFFF;
+  int inRange = 0;
+  for (int i = 0; i < zones; i++) {
+    // target_status 5 (100% valid) and 9 (50% valid) are the usable returns;
+    // everything else is no-target/too-noisy and is ignored.
+    uint8_t st = tofFrame.target_status[i];
+    if (st != 5 && st != 9) continue;
+    uint16_t d = (uint16_t)tofFrame.distance_mm[i];
+    if (d < nearest) nearest = d;
+    if (d >= TOF_MIN_MM && d <= TOF_OCCUPIED_MM) inRange++;
+  }
+  if (nearest != 0xFFFF) lastDistanceMm = nearest;
+
+  bool presence = inRange >= TOF_MIN_ZONES;
   uint32_t now = millis();
 
   if (presence) {
@@ -96,7 +122,7 @@ static bool updateOccupancy() {
     if (presenceSinceMs == 0) presenceSinceMs = now;
     if (!occupied && now - presenceSinceMs >= OCCUPY_AFTER_MS) {
       occupied = true;
-      Serial.printf("[occ] OCCUPIED (%u mm)\n", d);
+      Serial.printf("[occ] OCCUPIED (nearest %u mm, %d zones)\n", nearest, inRange);
       return true;
     }
   } else {
@@ -122,20 +148,26 @@ void setup() {
   Serial.printf("\n=== DONNA node %u — desk %s/%s/%s/%s/%s ===\n", NODE_ID,
                 DESK_COUNTRY, DESK_SITE, DESK_OFFICE, DESK_FLOOR, DESK_ID_STR);
 
-  // ToF sensor first — fail loud if the Grove cable is loose.
-  Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
-  tof.setTimeout(500);
-  if (!tof.init()) {
-    haltWithError("VL53L0X not found on I2C - check the Grove/I2C cable", 0);
+  // ToF sensor first — fail loud if the I2C wiring is loose. The VL53L5CX
+  // wants a 400 kHz bus; at 100 kHz an 8x8 frame barely keeps up. begin()
+  // uploads the sensor's firmware and can take a couple of seconds.
+  tofWire.setPins(PIN_I2C_SDA, PIN_I2C_SCL);  // move Wire1 off the IMU onto D7/D6
+  tofWire.begin();
+  tofWire.setClock(400000);
+  if (!tof.begin(0x29, tofWire)) {
+    haltWithError("VL53L5CX not found on I2C - check SDA/SCL (D6/D7) + 3V3", 0);
   }
-  // Free-running mode: the sensor re-measures itself every SENSOR_POLL_MS
-  // and we just collect the latest result.
-  tof.startContinuous(SENSOR_POLL_MS);
+  tof.setResolution(TOF_RESOLUTION);        // 16 (4x4) or 64 (8x8) zones
+  tof.setRangingFrequency(TOF_RANGING_HZ);
+  tof.startRanging();                        // free-running; poll isDataReady()
 
-  pinMode(PIN_LORA_ANT_SW, OUTPUT);
-  digitalWrite(PIN_LORA_ANT_SW, HIGH);  // power the antenna's TX/RX switch
+  // RF switch: DIO2 flips the TX side automatically during transmit (enabled
+  // just after radio.begin below). RXEN gates the RX side and is held LOW —
+  // a node only ever transmits, so the receive path stays off.
+  pinMode(PIN_LORA_RXEN, OUTPUT);
+  digitalWrite(PIN_LORA_RXEN, LOW);
 
-  SPI.begin(PIN_LORA_SCK, PIN_LORA_MISO, PIN_LORA_MOSI, PIN_LORA_NSS);
+  SPI.begin();  // nRF52840 uses the variant's fixed SPI pins (D8/D9/D10)
   int16_t state = radio.begin(LORA_FREQ_MHZ, LORA_BW_KHZ, LORA_SF, LORA_CR,
                               LORA_SYNC_WORD, LORA_TX_DBM,
                               LORA_PREAMBLE_SYMBOLS, LORA_TCXO_VOLTS);

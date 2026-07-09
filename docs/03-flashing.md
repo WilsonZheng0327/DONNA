@@ -7,8 +7,8 @@ chip, where the CPU boots from. The chip can't overwrite the program it is
 currently running, so every ESP32 has a small **ROM bootloader** burned into
 silicon at the factory — unerasable, always there. Reset the chip with the
 right pin held down (or ask nicely over USB) and instead of booting your app,
-it boots that ROM loader, which speaks a simple serial protocol: *erase this
-region, write these bytes, verify, reboot*. `esptool` (inside PlatformIO) is
+it boots that ROM loader, which speaks a simple serial protocol: _erase this
+region, write these bytes, verify, reboot_. `esptool` (inside PlatformIO) is
 the PC-side speaker of that protocol.
 
 On the XIAO ESP32S3 there's no USB-serial converter chip — the S3 has USB
@@ -54,15 +54,15 @@ your code).
 
 ## Troubleshooting
 
-| Symptom | Meaning / fix |
-|---------|---------------|
-| `Permission denied: /dev/ttyACM0` | Group membership above. |
-| `Connecting........_____` forever | Auto-reset failed → manual BOOT procedure. |
-| Port vanishes after flash | Normal for ~2 s during reboot; monitor reconnects. |
-| No serial output | Native-USB boards print only after USB re-enumerates; our firmware waits up to 3 s for the port. Unplug/replug if the monitor attached too late. |
-| RadioLib `-707` at boot | TCXO voltage not configured (we pass 1.8 V — if you see this, the radio board isn't seated). |
-| RadioLib `-2` at boot | SPI wiring/chip-select wrong — usually means this isn't the board we think it is. |
-| Want Meshtastic back | https://flasher.meshtastic.org in Chrome, device "Seeed XIAO S3", "Full Erase and Install". |
+| Symptom                           | Meaning / fix                                                                                                                                    |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Permission denied: /dev/ttyACM0` | Group membership above.                                                                                                                          |
+| `Connecting........_____` forever | Auto-reset failed → manual BOOT procedure.                                                                                                       |
+| Port vanishes after flash         | Normal for ~2 s during reboot; monitor reconnects.                                                                                               |
+| No serial output                  | Native-USB boards print only after USB re-enumerates; our firmware waits up to 3 s for the port. Unplug/replug if the monitor attached too late. |
+| RadioLib `-707` at boot           | TCXO voltage not configured (we pass 1.8 V — if you see this, the radio board isn't seated).                                                     |
+| RadioLib `-2` at boot             | SPI wiring/chip-select wrong — usually means this isn't the board we think it is.                                                                |
+| Want Meshtastic back              | https://flasher.meshtastic.org in Chrome, device "Seeed XIAO S3", "Full Erase and Install".                                                      |
 
 ## Why flashing replaces Meshtastic completely
 

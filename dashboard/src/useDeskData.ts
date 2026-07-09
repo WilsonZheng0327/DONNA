@@ -23,8 +23,12 @@ export function useDeskData() {
       onValue(ref(db, "hub"), (s) => setHub(s.val() ?? null)),
       // Difference between our clock and the database's clock, so staleness
       // math works even on a wall machine with a drifting clock.
-      onValue(ref(db, ".info/serverTimeOffset"), (s) => setServerOffset(s.val() ?? 0)),
-      onValue(ref(db, ".info/connected"), (s) => setConnected(s.val() === true)),
+      onValue(ref(db, ".info/serverTimeOffset"), (s) =>
+        setServerOffset(s.val() ?? 0),
+      ),
+      onValue(ref(db, ".info/connected"), (s) =>
+        setConnected(s.val() === true),
+      ),
     ];
     return () => unsubs.forEach((u) => u());
   }, []);

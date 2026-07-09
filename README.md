@@ -1,28 +1,28 @@
 # DONNA
 
 Find a free desk without walking the floor. A time-of-flight sensor under
-each desk decides *occupied or not*, shouts it over LoRa to a hub, the hub
+each desk decides _occupied or not_, shouts it over LoRa to a hub, the hub
 mirrors it into Firebase, and a wall dashboard shows the whole office at a
 glance.
 
 ```
  per desk                          one per office                cloud            any browser
 ┌────────────┐  I2C  ┌─────────┐   LoRa 915 MHz   ┌──────────────┐  HTTPS  ┌──────────┐  ws  ┌───────────┐
-│ VL53L0X ToF├───────┤ node MCU│ ))) 43 bytes ((( │ hub: XIAO    ├─────────┤ Firebase ├──────┤ dashboard │
-│ sensor     │       │ (LoRa)  │                  │ ESP32S3 +    │  PATCH  │ RTDB     │      │ React     │
+│ VL53L5CX   ├───────┤ XIAO    │ ))) 43 bytes ((( │ hub: XIAO    ├─────────┤ Firebase ├──────┤ dashboard │
+│ ToF sensor │       │ nRF52840│                  │ ESP32S3 +    │  PATCH  │ RTDB     │      │ React     │
 └────────────┘       └─────────┘                  │ Wio-SX1262   │         └──────────┘      └───────────┘
-                                                  └──────────────┘
+   node: XIAO nRF52840 + Wio-SX1262               └──────────────┘
 ```
 
 ## Repo map
 
-| Path | What |
-|------|------|
-| `shared/protocol.h` | Radio settings + packet layout, compiled into both firmwares |
-| `firmware/hub/` | PlatformIO project: LoRa RX → Firebase (the board on USB now) |
-| `firmware/node/` | PlatformIO project: ToF sensing → LoRa TX (one env per desk) |
-| `dashboard/` | Vite + React live board, reads Firebase directly |
-| `docs/` | **Read these to learn how the hardware works** — numbered in order |
+| Path                | What                                                                         |
+| ------------------- | ---------------------------------------------------------------------------- |
+| `shared/protocol.h` | Radio settings + packet layout, compiled into both firmwares                 |
+| `hub/`              | PlatformIO project (XIAO ESP32S3): LoRa RX → Firebase                        |
+| `node/`             | PlatformIO project (XIAO nRF52840): ToF sensing → LoRa TX (one env per desk) |
+| `dashboard/`        | Vite + React live board, reads Firebase directly                             |
+| `docs/`             | **Read these to learn how the hardware works** — numbered in order           |
 
 ## Docs / learning path
 
@@ -40,8 +40,8 @@ glance.
 sudo usermod -aG uucp $USER        # then log out/in; for right now instead:
 sudo chmod a+rw /dev/ttyACM0
 
-# 1. hub firmware
-cd firmware/hub
+# 1. hub firmware (XIAO ESP32S3)
+cd hub
 cp include/secrets.h.example include/secrets.h   # fill in WiFi + Firebase
 pio run -t upload
 pio device monitor                 # watch it connect and receive
@@ -49,28 +49,28 @@ pio device monitor                 # watch it connect and receive
 # 2. Firebase — follow docs/05-firebase.md (one-time, ~5 min, browser)
 
 # 3. dashboard
-cd ../../dashboard
+cd ../dashboard
 cp .env.example .env.local         # paste database URL
-npm install && npm run dev
+bun install && bun run dev
 
-# 4. desk nodes (after hub works)
-cd ../firmware/node
+# 4. desk nodes (XIAO nRF52840; after the hub works)
+cd ../node
 pio run -e node1 -t upload         # node2, node3... one env per desk
 ```
 
-Desk identity lives in the node: each env in `firmware/node/platformio.ini`
+Desk identity lives in the node: each env in `node/platformio.ini`
 carries that desk's floor + desk ID, and the packet lands in the database at
 `/{country}/{site}/{office}/{floor}/{deskId}` (e.g. `/US/SVL/CRBN100/4/4T434G`).
 Add a desk = add an env block and flash it. Building-wide location constants
-are in `firmware/node/include/config.h`.
+are in `node/include/config.h`.
 
 ## Status / open items
 
-- [x] Hub firmware — builds; flash + fill `secrets.h`
-- [x] Node firmware — builds **targeting the same XIAO kit as the hub**;
-      the real node boards are still unidentified. Plug one in over USB and
-      run `udevadm info -q property /dev/ttyACM0` — if it's not a XIAO
-      ESP32S3, retarget `firmware/node/platformio.ini` + pin config.
+- [x] Hub firmware (XIAO ESP32S3) — builds; flash + fill `secrets.h`
+- [~] Node firmware (XIAO nRF52840 + VL53L5CX) — **written, not yet built/tested**
+  (no PlatformIO toolchain or hardware here). LoRa pins come from Meshtastic's
+  variant for this kit; the ToF I2C wiring (D7=SDA, D6=SCL) and TX-only RF
+  switch need bench confirmation. First `node/` build pulls the nRF52 toolchain.
 - [x] Dashboard — builds; needs `.env.local`
 - [x] Hub self-test — with no nodes built yet, the hub publishes fake desk
       `/US/SVL/CRBN100/4/_SELFTEST` flipping every 10 s; watching it toggle

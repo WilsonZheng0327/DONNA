@@ -10,7 +10,10 @@ import {
 
 function deskStatus(desk: DeskRecord, serverNow: number): DeskStatus {
   // last_updated is epoch seconds (team schema); serverNow is ms.
-  if (!desk.last_updated || serverNow - desk.last_updated * 1000 > DESK_OFFLINE_AFTER_MS)
+  if (
+    !desk.last_updated ||
+    serverNow - desk.last_updated * 1000 > DESK_OFFLINE_AFTER_MS
+  )
     return "offline";
   return desk.occupied ? "occupied" : "free";
 }
@@ -34,7 +37,8 @@ function SetupPanel() {
 $EDITOR .env.local     # paste your Firebase database URL
 npm run dev            # restart`}</pre>
       <p className="panel__hint">
-        Create the database first if you haven't — see <b>docs/05-firebase.md</b>.
+        Create the database first if you haven't — see{" "}
+        <b>docs/05-firebase.md</b>.
       </p>
     </div>
   );
@@ -43,7 +47,9 @@ npm run dev            # restart`}</pre>
 function WaitingPanel() {
   return (
     <div className="panel">
-      <p className="panel__title">// connected — no desks under {OFFICE_PATH} yet</p>
+      <p className="panel__title">
+        // connected — no desks under {OFFICE_PATH} yet
+      </p>
       <p className="panel__hint">
         Power the hub (its self-test desk appears within ~10 s), power a node,
         or fake a desk with curl (<b>docs/05-firebase.md</b>).
@@ -65,7 +71,13 @@ export default function App() {
   if (!databaseUrl) {
     return (
       <main className="shell">
-        <Header free={0} occupied={0} offline={0} live={false} serverNow={Date.now()} />
+        <Header
+          free={0}
+          occupied={0}
+          offline={0}
+          live={false}
+          serverNow={Date.now()}
+        />
         <SetupPanel />
       </main>
     );
@@ -150,7 +162,11 @@ export default function App() {
       <footer className="foot">
         <span>{connected ? "db link up" : "db link down"}</span>
         <span>{OFFICE_PATH}</span>
-        {hub?.ip && <span>hub {hub.ip} · wifi {hub.wifi_rssi} dBm</span>}
+        {hub?.ip && (
+          <span>
+            hub {hub.ip} · wifi {hub.wifi_rssi} dBm
+          </span>
+        )}
         <span>DONNA</span>
       </footer>
     </main>

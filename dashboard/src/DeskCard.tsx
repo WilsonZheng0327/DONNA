@@ -31,7 +31,13 @@ interface Props {
   index: number;
 }
 
-export default function DeskCard({ deskId, rec, status, serverNow, index }: Props) {
+export default function DeskCard({
+  deskId,
+  rec,
+  status,
+  serverNow,
+  index,
+}: Props) {
   const isSelfTest = deskId === SELFTEST_DESK_ID;
   const bars = rssiBars(rec.rssi ?? -120);
   const agoMs = serverNow - (rec.last_updated ?? 0) * 1000;
@@ -41,9 +47,13 @@ export default function DeskCard({ deskId, rec, status, serverNow, index }: Prop
       style={{ animationDelay: `${index * 45}ms` }}
     >
       <header className="card__head">
-        <span className="card__name">{isSelfTest ? "HUB SELF-TEST" : deskId}</span>
+        <span className="card__name">
+          {isSelfTest ? "HUB SELF-TEST" : deskId}
+        </span>
         {rec.node_id != null && (
-          <span className="card__id">N{String(rec.node_id).padStart(2, "0")}</span>
+          <span className="card__id">
+            N{String(rec.node_id).padStart(2, "0")}
+          </span>
         )}
       </header>
 
@@ -63,7 +73,11 @@ export default function DeskCard({ deskId, rec, status, serverNow, index }: Prop
           title={`RSSI ${rec.rssi?.toFixed?.(0) ?? "?"} dBm · SNR ${rec.snr?.toFixed?.(1) ?? "?"} dB · seq ${rec.seq ?? "?"}`}
         >
           {[1, 2, 3, 4].map((b) => (
-            <i key={b} className={b <= bars ? "on" : ""} style={{ height: 3 + b * 3 }} />
+            <i
+              key={b}
+              className={b <= bars ? "on" : ""}
+              style={{ height: 3 + b * 3 }}
+            />
           ))}
         </span>
         <span title="raw ToF distance behind the decision">

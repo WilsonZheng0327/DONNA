@@ -51,7 +51,7 @@ Nodes transmit in exactly two situations:
 2. **Heartbeat** — every ~30 s regardless. This is the liveness path.
 
 The heartbeat solves an unsolvable-by-silence problem: a desk that says
-nothing could be *free and quiet* or *unplugged*. With heartbeats, silence
+nothing could be _free and quiet_ or _unplugged_. With heartbeats, silence
 longer than ~3 periods can only mean "node dead", and the dashboard shows
 OFFLINE instead of a stale, confidently wrong FREE.
 
