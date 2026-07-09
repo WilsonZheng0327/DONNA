@@ -71,7 +71,21 @@ constexpr uint16_t TOF_OCCUPIED_MM = 1000;
 //  - occupy fast (2 s) so the dashboard reacts when someone sits down
 //  - vacate slow (30 s) so leaning away or standing up for a moment
 //    doesn't flap the desk back to "free"
+// NOTE: VACANT_AFTER_MS temporarily lowered to 500 ms for bench testing so the
+// free transition is instant — restore to 30000 before deploying.
 constexpr uint32_t OCCUPY_AFTER_MS = 2000;
-constexpr uint32_t VACANT_AFTER_MS = 30000;
+constexpr uint32_t VACANT_AFTER_MS = 500;
 
 constexpr uint32_t SENSOR_POLL_MS = 100;
+
+// ---------------------------------------------------------------------------
+// Tuning telemetry. With TOF_DEBUG on, the node prints a live sensor summary
+// every TOF_DEBUG_MS even when the occupied/free state is steady, so you can
+// watch nearest-distance and in-range zone counts while you move around and
+// pick thresholds. TOF_DEBUG_GRID additionally dumps the full 8x8 distance
+// grid (verbose — good for aiming/mounting). Set TOF_DEBUG = false before
+// deploying to keep the serial quiet.
+// ---------------------------------------------------------------------------
+constexpr bool     TOF_DEBUG      = true;
+constexpr bool     TOF_DEBUG_GRID = false;
+constexpr uint32_t TOF_DEBUG_MS   = 500;

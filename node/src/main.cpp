@@ -92,6 +92,23 @@ static void sendState() {
   lastTxMs = millis();
 }
 
+// Dump the raw zone grid to serial — one row per line, distance in mm, or '.'
+// for a zone with no valid return. Orientation may be mirrored/rotated vs the
+// physical scene; for tuning you only need the magnitudes, not the exact cell.
+static void dumpTofGrid(int zones) {
+  const int side = (zones == 64) ? 8 : 4;
+  for (int r = 0; r < side; r++) {
+    Serial.print("  ");
+    for (int c = 0; c < side; c++) {
+      const int i = r * side + c;
+      const uint8_t st = tofFrame.target_status[i];
+      if (st == 5 || st == 9) Serial.printf("%5d", tofFrame.distance_mm[i]);
+      else                    Serial.print("    .");
+    }
+    Serial.println();
+  }
+}
+
 // One sensor frame -> presence/absence evidence -> maybe flip `occupied`.
 // The VL53L5CX reports a whole grid of zones; we reduce it to a boolean:
 // presence = at least TOF_MIN_ZONES zones see something inside the window.
@@ -102,12 +119,13 @@ static bool updateOccupancy() {
 
   const int zones = (TOF_RESOLUTION == 64) ? 64 : 16;
   uint16_t nearest = 0xFFFF;
-  int inRange = 0;
+  int inRange = 0, valid = 0;
   for (int i = 0; i < zones; i++) {
     // target_status 5 (100% valid) and 9 (50% valid) are the usable returns;
     // everything else is no-target/too-noisy and is ignored.
     uint8_t st = tofFrame.target_status[i];
     if (st != 5 && st != 9) continue;
+    valid++;
     uint16_t d = (uint16_t)tofFrame.distance_mm[i];
     if (d < nearest) nearest = d;
     if (d >= TOF_MIN_MM && d <= TOF_OCCUPIED_MM) inRange++;
@@ -115,6 +133,19 @@ static bool updateOccupancy() {
   if (nearest != 0xFFFF) lastDistanceMm = nearest;
 
   bool presence = inRange >= TOF_MIN_ZONES;
+
+  // Live tuning telemetry: prints every TOF_DEBUG_MS even when the debounced
+  // state is steady, so you can watch the numbers as you move around. The
+  // window shown is exactly the [TOF_MIN_MM, TOF_OCCUPIED_MM] band that counts.
+  static uint32_t lastDebugMs = 0;
+  if (TOF_DEBUG && millis() - lastDebugMs >= TOF_DEBUG_MS) {
+    lastDebugMs = millis();
+    Serial.printf("[tof] nearest=%4u mm  inrange[%u-%u]=%2d  valid=%2d/%d  presence=%d occ=%d\n",
+                  (nearest == 0xFFFF ? 0 : nearest), TOF_MIN_MM, TOF_OCCUPIED_MM,
+                  inRange, valid, zones, presence ? 1 : 0, occupied ? 1 : 0);
+    if (TOF_DEBUG_GRID) dumpTofGrid(zones);
+  }
+
   uint32_t now = millis();
 
   if (presence) {

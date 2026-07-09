@@ -2,7 +2,7 @@
 .pio/
 
 # Per-machine secrets (copy from secrets.h.example — never commit real credentials)
-firmware/*/include/secrets.h
+hub/include/secrets.h
 
 # Dashboard
 node_modules/
