@@ -176,6 +176,28 @@ body {
   gap: 16px;
 }
 
+.search-input {
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--text);
+  outline: none;
+  width: 180px;
+  transition: all 0.15s ease-in-out;
+}
+.search-input:focus {
+  background: var(--surface);
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px var(--blue-bg);
+  width: 220px;
+}
+.search-input::placeholder {
+  color: var(--text-3);
+}
+
 /* live status pill (material assist chip look) */
 .live {
   display: inline-flex;

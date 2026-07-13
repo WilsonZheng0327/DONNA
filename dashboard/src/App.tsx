@@ -1,3 +1,4 @@
+import {useState} from 'react';
 import DeskCard from './DeskCard';
 import {databaseUrl} from './firebase';
 import {
@@ -90,8 +91,23 @@ interface FlatDesk {
   status: DeskStatus;
 }
 
+function NoResultsPanel({query}: {query: string}) {
+  return (
+    <div className="panel">
+      <p className="panel__title">
+        <Icon name="search_off" />
+        No reservations found for "{query}"
+      </p>
+      <p className="panel__hint">
+        Make sure the LDAP is spelled correctly, or try searching without '@'.
+      </p>
+    </div>
+  );
+}
+
 export default function App() {
   const {office, hub, connected, serverNow} = useDeskData();
+  const [searchQuery, setSearchQuery] = useState('');
 
   if (!databaseUrl) {
     return (
@@ -120,7 +136,12 @@ export default function App() {
         rec,
         status: deskStatus(rec, serverNow),
       }))
-  );
+  ).filter((desk) => {
+    if (!searchQuery) return true;
+    const user = desk.rec.hold_user?.toLowerCase() ?? '';
+    const query = searchQuery.toLowerCase().replace('@', '');
+    return user.replace('@', '').includes(query);
+  });
 
   const free = flat.filter((d) => d.status === 'free').length;
   const occupied = flat.filter(
@@ -136,7 +157,12 @@ export default function App() {
 
   return (
     <main className="shell">
-      <Header live={connected && hubOnline} serverNow={serverNow} />
+      <Header
+        live={connected && hubOnline}
+        serverNow={serverNow}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+      />
 
       <div className="container">
         <section className="summary">
@@ -183,7 +209,7 @@ export default function App() {
         )}
 
         {flat.length === 0 ? (
-          <WaitingPanel />
+          searchQuery ? <NoResultsPanel query={searchQuery} /> : <WaitingPanel />
         ) : (
           floors.map((floor) => {
             const floorDesks = flat.filter((d) => d.floor === floor);
@@ -236,7 +262,12 @@ export default function App() {
   );
 }
 
-function Header(props: {live: boolean; serverNow: number}) {
+function Header(props: {
+  live: boolean;
+  serverNow: number;
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
+}) {
   return (
     <header className="head">
       <div className="head__inner container">
@@ -259,6 +290,13 @@ function Header(props: {live: boolean; serverNow: number}) {
         </div>
         <span className="head__spacer" />
         <div className="head__right">
+          <input
+            type="text"
+            placeholder="Search user..."
+            value={props.searchQuery}
+            onChange={(e) => props.setSearchQuery(e.target.value)}
+            className="search-input"
+          />
           <span className={`live ${props.live ? 'live--on' : ''}`}>
             <span className="live__dot" />
             {props.live ? 'Live' : 'Reconnecting'}
