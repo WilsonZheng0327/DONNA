@@ -9,6 +9,12 @@ function timeAgo(ms: number): string {
   return `${Math.floor(m / 60)}h`;
 }
 
+function formatTime(epochSeconds: number): string {
+  const d = new Date(epochSeconds * 1000);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 // Rough usable-signal buckets for LoRa at SF9 (sensitivity ≈ −123 dBm).
 function rssiBars(rssi: number): number {
   if (rssi > -85) return 4;
@@ -61,7 +67,9 @@ export default function DeskCard({
       {/* key= makes React remount on status change, replaying the flash */}
       <div className="card__status" key={status}>
         {STATUS_LABEL[status]}
-        {(status === 'reserved' || status === 'in-meeting') && rec.hold_user ? ` · ${rec.hold_user}` : ''}
+        {(status === 'reserved' || status === 'in-meeting') && rec.hold_user
+          ? ` · ${rec.hold_user}${rec.hold_expires ? ` (until ${formatTime(rec.hold_expires)})` : ''}`
+          : ''}
       </div>
 
       <footer className="card__meta">
