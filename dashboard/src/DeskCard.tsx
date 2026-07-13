@@ -64,7 +64,7 @@ export default function DeskCard({
       <header className="card__head">
         <span className="card__name">
           <span className="material-symbols-outlined">chair</span>
-          <span>{DESK_NAMES[deskId] || deskId}</span>
+          <span>{DESK_NAMES[deskId] ? `${DESK_NAMES[deskId]} @ ${deskId}` : deskId}</span>
         </span>
         {rec.node_id != null && (
           <span className="card__id">
