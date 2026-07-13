@@ -32,8 +32,8 @@ const STATUS_LABEL: Record<DeskStatus, string> = {
 };
 
 const DESK_NAMES: Record<string, string> = {
-  '4T432F': "Wilson's Desk",
-  '4T433E': "Jeff's Desk",
+  '4T432F': "Wilson",
+  '4T433E': "Jeff",
 };
 
 interface Props {
