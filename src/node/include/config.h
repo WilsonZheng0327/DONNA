@@ -14,10 +14,10 @@
 #define DESK_COUNTRY "US"
 #endif
 #ifndef DESK_SITE
-#define DESK_SITE    "SVL"
+#define DESK_SITE "SVL"
 #endif
 #ifndef DESK_OFFICE
-#define DESK_OFFICE  "CRBN100"
+#define DESK_OFFICE "CRBN100"
 #endif
 
 // ---------------------------------------------------------------------------
@@ -29,16 +29,16 @@
 // firmware via setDio2AsRfSwitch), and a separate RXEN line gates the RX side.
 // See docs/01-hardware.md.
 // ---------------------------------------------------------------------------
-constexpr int PIN_LORA_SCK   = 8;   // D8
-constexpr int PIN_LORA_MISO  = 9;   // D9
-constexpr int PIN_LORA_MOSI  = 10;  // D10
-constexpr int PIN_LORA_NSS   = 4;   // D4, radio chip select
-constexpr int PIN_LORA_DIO1  = 1;   // D1, "packet done" interrupt
-constexpr int PIN_LORA_RESET = 2;   // D2
-constexpr int PIN_LORA_BUSY  = 3;   // D3
+constexpr int PIN_LORA_SCK = 8;    // D8
+constexpr int PIN_LORA_MISO = 9;   // D9
+constexpr int PIN_LORA_MOSI = 10;  // D10
+constexpr int PIN_LORA_NSS = 4;    // D4, radio chip select
+constexpr int PIN_LORA_DIO1 = 1;   // D1, "packet done" interrupt
+constexpr int PIN_LORA_RESET = 2;  // D2
+constexpr int PIN_LORA_BUSY = 3;   // D3
 // RX enable half of the RF switch. A node only ever transmits, so the firmware
 // holds this LOW and lets DIO2 flip the TX side automatically during transmit.
-constexpr int PIN_LORA_RXEN  = 5;   // D5
+constexpr int PIN_LORA_RXEN = 5;  // D5
 
 // PIN_LED is already provided by the XIAO variant (the red LED of the RGB,
 // active-low: LOW = on). We deliberately do NOT redefine it here — the variant
@@ -50,8 +50,8 @@ constexpr int PIN_LORA_RXEN  = 5;   // D5
 // radio's CS/RXEN — so the sensor must go elsewhere and Wire is remapped in
 // firmware. D6/D7 are free here because we do not fit the kit's optional GNSS.
 // Wiring as built: D7 = SDA, D6 = SCL. See docs/06-tof-sensor.md.
-constexpr int PIN_I2C_SDA = 7;   // D7
-constexpr int PIN_I2C_SCL = 6;   // D6
+constexpr int PIN_I2C_SDA = 7;  // D7
+constexpr int PIN_I2C_SCL = 6;  // D6
 
 // ---------------------------------------------------------------------------
 // Occupancy tuning — adjust these to your mounting position.
@@ -62,23 +62,23 @@ constexpr int PIN_I2C_SCL = 6;   // D6
 
 // 16 = 4x4 grid (faster, up to 60 Hz), 64 = 8x8 grid (wider coverage, <=15 Hz).
 // 8x8 is more forgiving of exactly where the person sits in the cone.
-constexpr uint8_t  TOF_RESOLUTION  = 64;
-constexpr uint8_t  TOF_RANGING_HZ  = 15;
+constexpr uint8_t TOF_RESOLUTION = 64;
+constexpr uint8_t TOF_RANGING_HZ = 15;
 // How many in-range zones count as "someone is there". This is the primary
 // occupied decision at the monitor-top mount, where distance alone can't tell
 // an empty chair from a person in it. Measured here: an empty chair in place
 // lights ~6-8 zones (just its back row) at ~810 mm, while a seated person fills
 // ~12-16 zones (whole torso, several rows). 10 sits in that gap, so an empty
 // chair reads free and a seated person reads occupied. Re-tune if remounted.
-constexpr uint8_t  TOF_MIN_ZONES   = 10;
+constexpr uint8_t TOF_MIN_ZONES = 10;
 
 // Below the minimum it's usually the sensor's own cover glass reflecting.
-// Kept deliberately WIDE at this mount: a seated person's zones span ~530-900 mm
-// (nearest ~650) and the chair back sits ~810 mm, while the wall behind reads
-// ~3600 mm. 1200 includes the whole seated person (and the chair) but excludes
-// the wall, so distance no longer separates chair from person - TOF_MIN_ZONES
-// does that. Re-tune if the sensor is remounted.
-constexpr uint16_t TOF_MIN_MM      = 40;
+// Kept deliberately WIDE at this mount: a seated person's zones span ~530-900
+// mm (nearest ~650) and the chair back sits ~810 mm, while the wall behind
+// reads ~3600 mm. 1200 includes the whole seated person (and the chair) but
+// excludes the wall, so distance no longer separates chair from person -
+// TOF_MIN_ZONES does that. Re-tune if the sensor is remounted.
+constexpr uint16_t TOF_MIN_MM = 40;
 constexpr uint16_t TOF_OCCUPIED_MM = 1200;
 
 // Debounce, in two directions with different time constants:
@@ -99,9 +99,9 @@ constexpr uint32_t SENSOR_POLL_MS = 100;
 // grid (verbose — good for aiming/mounting). Set TOF_DEBUG = false before
 // deploying to keep the serial quiet.
 // ---------------------------------------------------------------------------
-constexpr bool     TOF_DEBUG      = true;
-constexpr bool     TOF_DEBUG_GRID = false;
-constexpr uint32_t TOF_DEBUG_MS   = 500;
+constexpr bool TOF_DEBUG = true;
+constexpr bool TOF_DEBUG_GRID = false;
+constexpr uint32_t TOF_DEBUG_MS = 500;
 
 // ---------------------------------------------------------------------------
 // TEMPORARY calibration burst. When on, the node spends its first
@@ -111,5 +111,5 @@ constexpr uint32_t TOF_DEBUG_MS   = 500;
 // produces, then pick TOF_MIN_MM / TOF_OCCUPIED_MM / TOF_MIN_ZONES from them.
 // Set CALIBRATION_MODE = false (or revert this block) to return to normal ops.
 // ---------------------------------------------------------------------------
-constexpr bool     CALIBRATION_MODE = false;
-constexpr uint32_t CALIBRATION_MS   = 10000;
+constexpr bool CALIBRATION_MODE = false;
+constexpr uint32_t CALIBRATION_MS = 10000;

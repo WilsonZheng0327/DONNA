@@ -5,13 +5,13 @@
 // These are ESP32-S3 GPIO numbers, verified against Seeed's schematic and the
 // Meshtastic port for this exact kit. See docs/01-hardware.md for the roles.
 // ---------------------------------------------------------------------------
-constexpr int PIN_LORA_SCK   = 7;   // SPI clock
-constexpr int PIN_LORA_MISO  = 8;   // SPI radio -> MCU
-constexpr int PIN_LORA_MOSI  = 9;   // SPI MCU -> radio
-constexpr int PIN_LORA_NSS   = 41;  // SPI chip select (active low)
-constexpr int PIN_LORA_DIO1  = 39;  // radio interrupt line: "packet arrived"
+constexpr int PIN_LORA_SCK = 7;     // SPI clock
+constexpr int PIN_LORA_MISO = 8;    // SPI radio -> MCU
+constexpr int PIN_LORA_MOSI = 9;    // SPI MCU -> radio
+constexpr int PIN_LORA_NSS = 41;    // SPI chip select (active low)
+constexpr int PIN_LORA_DIO1 = 39;   // radio interrupt line: "packet arrived"
 constexpr int PIN_LORA_RESET = 42;  // hard reset into the radio
-constexpr int PIN_LORA_BUSY  = 40;  // radio "still working, don't talk to me"
+constexpr int PIN_LORA_BUSY = 40;   // radio "still working, don't talk to me"
 // Must be driven HIGH to power the antenna's TX/RX switch. Forget this and
 // both radios "work" (SPI answers fine) but the antenna is disconnected.
 constexpr int PIN_LORA_ANT_SW = 38;
@@ -32,13 +32,13 @@ constexpr uint32_t WIFI_RETRY_MS = 8000;
 // hub -> WiFi -> Firebase -> dashboard with zero node hardware. The fake
 // desk lives at /US/SVL/CRBN100/4/_SELFTEST — obviously named, and deleted
 // automatically once real node traffic arrives.
-constexpr bool     DEMO_DESK_ENABLED     = true;
-constexpr uint8_t  DEMO_DESK_NODE_ID     = 0;
+constexpr bool DEMO_DESK_ENABLED = true;
+constexpr uint8_t DEMO_DESK_NODE_ID = 0;
 constexpr uint32_t DEMO_DESK_INTERVAL_MS = 10000;
 #define DEMO_COUNTRY "US"
-#define DEMO_SITE    "SVL"
-#define DEMO_OFFICE  "CRBN100"
-#define DEMO_FLOOR   "4"
+#define DEMO_SITE "SVL"
+#define DEMO_OFFICE "CRBN100"
+#define DEMO_FLOOR "4"
 #define DEMO_DESK_ID "_SELFTEST"
 
 // Proof-of-life line on the serial monitor — works before WiFi is even

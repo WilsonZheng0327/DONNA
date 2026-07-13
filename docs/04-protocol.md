@@ -27,51 +27,50 @@ offset  size  field       why it exists
 ```
 
 `__attribute__((packed))` matters: without it the compiler may pad fields to
-aligned addresses, and the two MCUs could disagree about where fields sit.
-The struct's bytes go on the air verbatim — layout is the protocol.
+aligned addresses, and the two MCUs could disagree about where fields sit. The
+struct's bytes go on the air verbatim — layout is the protocol.
 
 **Why location lives in the node, not the hub:** each packet fully describes
 where it came from, so the hub is a stateless translator — it never holds a
-floor plan. Installing or moving a sensor means reflashing that one node
-(its env in `firmware/node/platformio.ini`); the hub and dashboard adapt
-automatically. The cost is 30 bytes of airtime per packet, which at our
-transmit rates is irrelevant.
+floor plan. Installing or moving a sensor means reflashing that one node (its
+env in `firmware/node/platformio.ini`); the hub and dashboard adapt
+automatically. The cost is 30 bytes of airtime per packet, which at our transmit
+rates is irrelevant.
 
-**Path safety:** the hub writes to Firebase with admin rights, and these
-strings become the write path. The hub therefore only accepts letters,
-digits, `_` and `-` in location fields — a corrupted packet containing `/`
-or `.` is dropped, not written somewhere surprising.
+**Path safety:** the hub writes to Firebase with admin rights, and these strings
+become the write path. The hub therefore only accepts letters, digits, `_` and
+`-` in location fields — a corrupted packet containing `/` or `.` is dropped,
+not written somewhere surprising.
 
 ## Who talks when
 
 Nodes transmit in exactly two situations:
 
-1. **State change** — occupied↔free flip, sent immediately. This is the
-   low-latency path: dashboard reacts ~1 s after the debounce settles.
-2. **Heartbeat** — every ~30 s regardless. This is the liveness path.
+1.  **State change** — occupied↔free flip, sent immediately. This is the
+    low-latency path: dashboard reacts ~1 s after the debounce settles.
+2.  **Heartbeat** — every ~30 s regardless. This is the liveness path.
 
-The heartbeat solves an unsolvable-by-silence problem: a desk that says
-nothing could be _free and quiet_ or _unplugged_. With heartbeats, silence
-longer than ~3 periods can only mean "node dead", and the dashboard shows
-OFFLINE instead of a stale, confidently wrong FREE.
+The heartbeat solves an unsolvable-by-silence problem: a desk that says nothing
+could be *free and quiet* or *unplugged*. With heartbeats, silence longer than
+~3 periods can only mean "node dead", and the dashboard shows OFFLINE instead of
+a stale, confidently wrong FREE.
 
-There are no ACKs and no retries. A lost state-change packet self-heals at
-the next heartbeat — worst case the dashboard is 30 s behind for one desk.
-That failure mode is acceptable; the complexity of an ARQ scheme is not.
+There are no ACKs and no retries. A lost state-change packet self-heals at the
+next heartbeat — worst case the dashboard is 30 s behind for one desk. That
+failure mode is acceptable; the complexity of an ARQ scheme is not.
 
 ## What the hub adds
 
-The hub enriches each record with things only it can know: **RSSI**
-(received signal strength, dBm — how loud) and **SNR** (signal-to-noise,
-dB — how clean). Watch these to place nodes: RSSI above about −110 dBm at
-SF9 is comfortable.
+The hub enriches each record with things only it can know: **RSSI** (received
+signal strength, dBm — how loud) and **SNR** (signal-to-noise, dB — how clean).
+Watch these to place nodes: RSSI above about −110 dBm at SF9 is comfortable.
 
-It also stamps `last_updated` — epoch **seconds**, to match the team's
-existing records. The ESP32 boots thinking it's 1970, so the hub runs SNTP
-(network time) after WiFi comes up and refuses to upload anything until the
-clock is sane. The dashboard compares against Firebase's server clock (via
-`.info/serverTimeOffset`), so staleness math survives a wrong wall-machine
-clock too.
+It also stamps `last_updated` — epoch **seconds**, to match the team's existing
+records. The ESP32 boots thinking it's 1970, so the hub runs SNTP (network time)
+after WiFi comes up and refuses to upload anything until the clock is sane. The
+dashboard compares against Firebase's server clock (via
+`.info/serverTimeOffset`), so staleness math survives a wrong wall-machine clock
+too.
 
 ## Firebase data shape
 
@@ -87,9 +86,9 @@ clock too.
 /hub: { last_updated, ip, wifi_rssi, uptime_s }   ← hub liveness
 ```
 
-Example real path: `/US/SVL/CRBN100/4/4T434G`. The hub's self-test desk
-(before any real node exists) is `/US/SVL/CRBN100/4/_SELFTEST` — obviously
-named, and deleted automatically when real traffic starts.
+Example real path: `/US/SVL/CRBN100/4/4T434G`. The hub's self-test desk (before
+any real node exists) is `/US/SVL/CRBN100/4/_SELFTEST` — obviously named, and
+deleted automatically when real traffic starts.
 
 Layered liveness, computed by the dashboard:
 

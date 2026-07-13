@@ -18,6 +18,7 @@
   /* brand */
   --blue: #1a73e8;
   --blue-600: #1967d2;
+  --blue-bg: #e8f0fe;
   --red: #d93025;
   --red-bg: #fce8e6;
   --green: #1e8e3e;
@@ -444,6 +445,14 @@ body {
 .card--occupied .card__status {
   background: var(--red-bg);
   color: var(--red);
+}
+.card--reserved .card__status {
+  background: #fef3c7;
+  color: #d97706;
+}
+.card--in-meeting .card__status {
+  background: var(--blue-bg);
+  color: var(--blue);
 }
 .card--offline {
   background: var(--surface);
