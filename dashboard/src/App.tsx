@@ -1,13 +1,13 @@
-import DeskCard from './DeskCard';
-import {databaseUrl} from './firebase';
+import DeskCard from "./DeskCard";
+import { databaseUrl } from "./firebase";
+import { OFFICE_PATH, useDeskData } from "./useDeskData";
 import {
   DESK_OFFLINE_AFTER_MS,
   HUB_OFFLINE_AFTER_MS,
   SELFTEST_DESK_ID,
   type DeskRecord,
   type DeskStatus,
-} from './types';
-import {OFFICE_PATH, useDeskData} from './useDeskData';
+} from "./types";
 
 function deskStatus(desk: DeskRecord, serverNow: number): DeskStatus {
   // last_updated is epoch seconds (team schema); serverNow is ms.
@@ -15,33 +15,17 @@ function deskStatus(desk: DeskRecord, serverNow: number): DeskStatus {
     !desk.last_updated ||
     serverNow - desk.last_updated * 1000 > DESK_OFFLINE_AFTER_MS
   )
-    return 'offline';
-
-  const isBooked =
-    desk.hold_user &&
-    desk.hold_expires &&
-    desk.hold_expires * 1000 > serverNow;
-
-  if (isBooked) {
-    if (desk.occupied) {
-      return 'occupied';
-    }
-    if (desk.in_meeting) {
-      return 'in-meeting';
-    }
-    return 'reserved';
-  }
-
-  return desk.occupied ? 'occupied' : 'free';
+    return "offline";
+  return desk.occupied ? "occupied" : "free";
 }
 
-function Icon({name}: {name: string}) {
+function Icon({ name }: { name: string }) {
   return <span className="material-symbols-outlined">{name}</span>;
 }
 
-function Clock({serverNow}: {serverNow: number}) {
+function Clock({ serverNow }: { serverNow: number }) {
   const d = new Date(serverNow);
-  const p = (n: number) => String(n).padStart(2, '0');
+  const p = (n: number) => String(n).padStart(2, "0");
   return (
     <time className="clock">
       {p(d.getHours())}:{p(d.getMinutes())}
@@ -61,7 +45,7 @@ function SetupPanel() {
 $EDITOR .env.local     # paste your Firebase database URL
 bun run dev            # restart`}</pre>
       <p className="panel__hint">
-        Create the database first if you haven't — see{' '}
+        Create the database first if you haven't — see{" "}
         <b>docs/05-firebase.md</b>.
       </p>
     </div>
@@ -91,7 +75,7 @@ interface FlatDesk {
 }
 
 export default function App() {
-  const {office, hub, connected, serverNow} = useDeskData();
+  const { office, hub, connected, serverNow } = useDeskData();
 
   if (!databaseUrl) {
     return (
@@ -106,30 +90,25 @@ export default function App() {
 
   // floor -> desks, sorted so the board is spatially stable.
   const floors = Object.keys(office).sort((a, b) =>
-    a.localeCompare(b, undefined, {numeric: true})
+    a.localeCompare(b, undefined, { numeric: true }),
   );
   const flat: FlatDesk[] = floors.flatMap((floor) =>
     Object.entries(office[floor] ?? {})
       // _SELFTEST is a backend-only liveness probe; never show it on the board.
       .filter(([deskId]) => deskId !== SELFTEST_DESK_ID)
-      .filter(([, rec]) => rec && typeof rec === 'object')
-      .sort(([a], [b]) => a.localeCompare(b, undefined, {numeric: true}))
+      .filter(([, rec]) => rec && typeof rec === "object")
+      .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
       .map(([deskId, rec]) => ({
         floor,
         deskId,
         rec,
         status: deskStatus(rec, serverNow),
-      }))
+      })),
   );
 
-  const free = flat.filter((d) => d.status === 'free').length;
-  const occupied = flat.filter(
-    (d) =>
-      d.status === 'occupied' ||
-      d.status === 'reserved' ||
-      d.status === 'in-meeting'
-  ).length;
-  const offline = flat.filter((d) => d.status === 'offline').length;
+  const free = flat.filter((d) => d.status === "free").length;
+  const occupied = flat.filter((d) => d.status === "occupied").length;
+  const offline = flat.filter((d) => d.status === "offline").length;
 
   const hubOnline =
     hub != null && serverNow - hub.last_updated * 1000 < HUB_OFFLINE_AFTER_MS;
@@ -176,7 +155,7 @@ export default function App() {
               Hub offline
               {hub
                 ? ` — last heard ${Math.round(serverNow / 1000 - hub.last_updated)}s ago`
-                : ' — never seen'}
+                : " — never seen"}
               . Desk states below may be stale.
             </span>
           </div>
@@ -194,7 +173,7 @@ export default function App() {
                   <Icon name="layers" />
                   Floor <b>{floor}</b>
                   <span className="floor__tally">
-                    {floorDesks.filter((d) => d.status === 'free').length}{' '}
+                    {floorDesks.filter((d) => d.status === "free").length}{" "}
                     available · {floorDesks.length} desks
                   </span>
                 </h2>
@@ -217,8 +196,8 @@ export default function App() {
 
         <footer className="foot">
           <span>
-            <Icon name={connected ? 'cloud_done' : 'cloud_off'} />
-            {connected ? 'Database connected' : 'Database offline'}
+            <Icon name={connected ? "cloud_done" : "cloud_off"} />
+            {connected ? "Database connected" : "Database offline"}
           </span>
           <span>{OFFICE_PATH}</span>
           {hub?.ip && (
@@ -236,7 +215,7 @@ export default function App() {
   );
 }
 
-function Header(props: {live: boolean; serverNow: number}) {
+function Header(props: { live: boolean; serverNow: number }) {
   return (
     <header className="head">
       <div className="head__inner container">
@@ -253,15 +232,15 @@ function Header(props: {live: boolean; serverNow: number}) {
               <i>A</i>
             </h1>
             <div className="head__sub">
-              Desk availability · {OFFICE_PATH.split('/').pop()}
+              Desk availability · {OFFICE_PATH.split("/").pop()}
             </div>
           </div>
         </div>
         <span className="head__spacer" />
         <div className="head__right">
-          <span className={`live ${props.live ? 'live--on' : ''}`}>
+          <span className={`live ${props.live ? "live--on" : ""}`}>
             <span className="live__dot" />
-            {props.live ? 'Live' : 'Reconnecting'}
+            {props.live ? "Live" : "Reconnecting"}
           </span>
           <Clock serverNow={props.serverNow} />
         </div>

@@ -1,4 +1,4 @@
-import {type DeskRecord, type DeskStatus} from './types';
+import { type DeskRecord, type DeskStatus } from "./types";
 
 function timeAgo(ms: number): string {
   if (ms < 0) ms = 0;
@@ -18,11 +18,9 @@ function rssiBars(rssi: number): number {
 }
 
 const STATUS_LABEL: Record<DeskStatus, string> = {
-  free: 'Available',
-  occupied: 'Occupied',
-  offline: 'Offline',
-  reserved: 'Reserved Hold',
-  'in-meeting': 'In Meeting (Away)',
+  free: "Available",
+  occupied: "Occupied",
+  offline: "Offline",
 };
 
 interface Props {
@@ -45,7 +43,8 @@ export default function DeskCard({
   return (
     <article
       className={`card card--${status}`}
-      style={{animationDelay: `${index * 45}ms`}}>
+      style={{ animationDelay: `${index * 45}ms` }}
+    >
       <header className="card__head">
         <span className="card__name">
           <span className="material-symbols-outlined">chair</span>
@@ -53,7 +52,7 @@ export default function DeskCard({
         </span>
         {rec.node_id != null && (
           <span className="card__id">
-            N{String(rec.node_id).padStart(2, '0')}
+            N{String(rec.node_id).padStart(2, "0")}
           </span>
         )}
       </header>
@@ -61,28 +60,28 @@ export default function DeskCard({
       {/* key= makes React remount on status change, replaying the flash */}
       <div className="card__status" key={status}>
         {STATUS_LABEL[status]}
-        {(status === 'reserved' || status === 'in-meeting') && rec.hold_user ? ` · ${rec.hold_user}` : ''}
       </div>
 
       <footer className="card__meta">
         <span title="time since last update for this desk">
-          {status === 'offline' ? 'lost ' : ''}
+          {status === "offline" ? "lost " : ""}
           {timeAgo(agoMs)}
-          {status === 'offline' ? ' ago' : ''}
+          {status === "offline" ? " ago" : ""}
         </span>
         <span
           className="card__bars"
-          title={`RSSI ${rec.rssi?.toFixed?.(0) ?? '?'} dBm · SNR ${rec.snr?.toFixed?.(1) ?? '?'} dB · seq ${rec.seq ?? '?'}`}>
+          title={`RSSI ${rec.rssi?.toFixed?.(0) ?? "?"} dBm · SNR ${rec.snr?.toFixed?.(1) ?? "?"} dB · seq ${rec.seq ?? "?"}`}
+        >
           {[1, 2, 3, 4].map((b) => (
             <i
               key={b}
-              className={b <= bars ? 'on' : ''}
-              style={{height: 3 + b * 3}}
+              className={b <= bars ? "on" : ""}
+              style={{ height: 3 + b * 3 }}
             />
           ))}
         </span>
         <span title="raw ToF distance behind the decision">
-          {rec.distance_mm ?? '—'} mm
+          {rec.distance_mm ?? "—"} mm
         </span>
       </footer>
     </article>

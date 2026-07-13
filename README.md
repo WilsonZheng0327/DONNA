@@ -1,141 +1,83 @@
-<p align="center">
-  <img src="https://sites.google.com/sitesv-images-rt/ACHe0d3KNWKox3qeRi1r_YBRQZOSoHVdcEcCuxMtRZQrXiV-5_gDYHK3JYJgBHhnPgQrMbhlyXfOb9kds0PDYEbdAblhRZxOnk3H7z3jPE6tHs_d3JIv7y9vQHHnXVsaF6H0kKwqKEekAppJftqpgbeCVhXSkZObABZeecT4VoHQvm0ZwS-pv2hmdAkjjZpnFOA=w16383" width="300" style="background-color: black; padding: 10px; border-radius: 4px;" alt="AI2 organizational branding for the hackathon" />
-</p>
+# DONNA
 
-# Welcome to the Agents for Work Hackathon 2026! ⚡
+Find a free desk without walking the floor. A time-of-flight sensor under
+each desk decides _occupied or not_, shouts it over LoRa to a hub, the hub
+mirrors it into Firebase, and a wall dashboard shows the whole office at a
+glance.
 
-This workspace is your **Command Center** for the hackathon. Here, you can plan
-your project, write code, and collaborate with your team and AI agents.
+```
+ per desk                          one per office                cloud            any browser
+┌────────────┐  I2C  ┌─────────┐   LoRa 915 MHz   ┌──────────────┐  HTTPS  ┌──────────┐  ws  ┌───────────┐
+│ VL53L5CX   ├───────┤ XIAO    │ ))) 43 bytes ((( │ hub: XIAO    ├─────────┤ Firebase ├──────┤ dashboard │
+│ ToF sensor │       │ nRF52840│                  │ ESP32S3 +    │  PATCH  │ RTDB     │      │ React     │
+└────────────┘       └─────────┘                  │ Wio-SX1262   │         └──────────┘      └───────────┘
+   node: XIAO nRF52840 + Wio-SX1262               └──────────────┘
+```
 
---------------------------------------------------------------------------------
+## Repo map
 
-## 🎯 Core Themes
+| Path                | What                                                                         |
+| ------------------- | ---------------------------------------------------------------------------- |
+| `shared/protocol.h` | Radio settings + packet layout, compiled into both firmwares                 |
+| `hub/`              | PlatformIO project (XIAO ESP32S3): LoRa RX → Firebase                        |
+| `node/`             | PlatformIO project (XIAO nRF52840): ToF sensing → LoRa TX (one env per desk) |
+| `dashboard/`        | Vite + React live board, reads Firebase directly                             |
+| `docs/`             | **Read these to learn how the hardware works** — numbered in order           |
 
-*   **📧 Productivity & Inbox Management:** Revolutionize how we handle email,
-    chat, and daily tasks.
-*   **💻 Developer Velocity:** Build tools that make coding, testing, and
-    deploying faster for Googlers.
-*   **🤝 Meeting & Collaboration:** Improve how teams interact, document, and
-    follow up on meetings.
-*   **✨ Blue Sky:** Any out-of-the-box agentic tool that transforms how we work.
+## Docs / learning path
 
---------------------------------------------------------------------------------
+1. [The hardware, wire by wire](docs/01-hardware.md) — boards, every pin, the two traps
+2. [LoRa in one sitting](docs/02-lora.md) — chirps, SF/BW/CR, airtime, legality
+3. [Flashing: what actually happens](docs/03-flashing.md) — ROM bootloader, esptool, troubleshooting
+4. [The wire protocol](docs/04-protocol.md) — why each of the 13 bytes exists
+5. [Firebase setup](docs/05-firebase.md) — console steps, rules, curl tests
+6. [The ToF sensor](docs/06-tof-sensor.md) — how it times photons, mounting, tuning
 
-## 📅 Rules & Timeline
+## Getting running
 
-*   **Submission Deadline:** July 9th, 11:59 PM PST.
-*   **Deliverables:**
-    *   🛠️ A working prototype (deployed to Boq Web/Demos if applicable).
-    *   🎥 A 3-minute demo video.
-    *   🔗 Link to your repository.
+```bash
+# 0. one-time: serial port access (Arch)
+sudo usermod -aG uucp $USER        # then log out/in; for right now instead:
+sudo chmod a+rw /dev/ttyACM0
 
---------------------------------------------------------------------------------
+# 1. hub firmware (XIAO ESP32S3)
+cd hub
+cp include/secrets.h.example include/secrets.h   # fill in WiFi + Firebase
+pio run -t upload
+pio device monitor                 # watch it connect and receive
 
-## 📊 Rubric
+# 2. Firebase — follow docs/05-firebase.md (one-time, ~5 min, browser)
 
-Your projects will be judged on the following five categories:
+# 3. dashboard
+cd ../dashboard
+cp .env.example .env.local         # paste database URL
+bun install && bun run dev
 
-| **Category**     | **Weight** | **Description**  | **Scoring Guide (1 to   |
-:                  :            :                  : 5)**                    :
-| :--------------- | :--------: | :--------------- | :---------------------- |
-| **1. Business    | 35%        | Measures how     | **1** - Solves a        |
-: Impact & Work    :            : effectively the  : minor/niche             :
-: Transformation** :            : agent solves a   : problem.<br>**3** -     :
-:                  :            : real workflow    : Addresses a real pain   :
-:                  :            : bottleneck,      : point with moderate     :
-:                  :            : improves         : impact.<br>**5** -      :
-:                  :            : productivity, or : Solves a major          :
-:                  :            : brings "joy" to  : strategic bottleneck;   :
-:                  :            : daily work.      : high viral potential.   :
-| **2. Human-Agent | 25%        | Evaluates the    | **1** -                 |
-: Experience       :            : usability and    : Confusing/unpredictable :
-: (HAX)**          :            : quality of       : interaction.<br>**3** - :
-:                  :            : interaction      : Functional but          :
-:                  :            : between the      : clunky.<br>**5** -      :
-:                  :            : human and the    : Seamless, natural       :
-:                  :            : agent.           : collaboration; high     :
-:                  :            :                  : trust.                  :
-| **3. Agentic     | 20%        | Evaluates the    | **1** - Basic prompt    |
-: Innovation &     :            : novelty and      : wrapper.<br>**3** -     :
-: Sophistication** :            : creativity of    : Good tool/skill         :
-:                  :            : the agent's      : integration.<br>**5** - :
-:                  :            : design. Looks    : Groundbreaking design   :
-:                  :            : for advanced     : (multi-agent, custom    :
-:                  :            : agentic patterns : skills).                :
-:                  :            : beyond simple    :                         :
-:                  :            : prompt-wrappers. :                         :
-| **4. Technical   | 20%        | Assesses         | **1** - Concept only or |
-: Execution &      :            : technical        : unstable                :
-: Robustness**     :            : viability, code  : code.<br>**3** -        :
-:                  :            : quality, agent   : Working demo (happy     :
-:                  :            : reliability, and : path).<br>**5** -       :
-:                  :            : readiness for    : Robust prototype, clean :
-:                  :            : production       : code, ready for         :
-:                  :            : integration.     : integration.            :
-| **Extra Credit:  | +5%        | Awarded to teams | **1** - Homogeneous     |
-: Collaboration &  :            : that effectively : team / single           :
-: Team Diversity** :            : leverage diverse : member.<br>**3** -      :
-:                  :            : skills, roles    : Mixed roles or          :
-:                  :            : (SWE, PM, UX),   : different host          :
-:                  :            : or different     : teams.<br>**5** - High  :
-:                  :            : organizational   : diversity (roles &      :
-:                  :            : backgrounds.     : orgs) with clear        :
-:                  :            :                  : synergy.                :
+# 4. desk nodes (XIAO nRF52840; after the hub works)
+cd ../node
+pio run -e node1 -t upload         # node2, node3... one env per desk
+```
 
-For a detailed breakdown of the scoring guides and criteria, please refer to the
-official
-[Proposed Judging Rubric](https://docs.google.com/document/d/1HfHuSpHjQsSxvzez_2sVJlt12kQSUyzwu_qqcWX0QoY/edit?tab=t.efmdc0x99734).
+Desk identity lives in the node: each env in `node/platformio.ini`
+carries that desk's floor + desk ID, and the packet lands in the database at
+`/{country}/{site}/{office}/{floor}/{deskId}` (e.g. `/US/SVL/CRBN100/4/4T434G`).
+Add a desk = add an env block and flash it. Building-wide location constants
+are in `node/include/config.h`.
 
---------------------------------------------------------------------------------
+## Status / open items
 
-## 🛠️ Recommended Tools & Skills
-
-Your workspace is pre-configured with several powerful tools and skills to help
-you build your project faster:
-
-### 🔌 Plugins
-
-*   **gpowers** (`gpowers`): A collection of engineering skills and sub-agents
-    (like `architect`, `implementer`, `reviewer`) to make you more productive in
-    google3.
-    *   *How to use:* You can delegate tasks to these specialized agents. E.g.,
-        `"Invoke architect to analyze this codebase"` or `"Use implementer to
-        write tests for my new feature"`.
-*   **EGM (Elephant-Goldfish Model)** (`google3/corp/agent/plugins/egm`): A
-    plugin implementing the "Design is the New Code" methodology to help you
-    write and validate precise technical designs before coding.
-    *   *How to use:* Use slash commands to guide your design process:
-        `/egm-discuss` (design interview), `/egm-draft` (draft design doc),
-        `/egm-review` (adversarial review), and `/egm-drift-report` (detect
-        code-to-design drift).
-
-### 💡 Skills
-
-*   **grill-me** (`grill-me`): Collaboratively stress-test your plans. The agent
-    will ask you targeted questions to refine your design before you start
-    coding.
-    *   *How to use:* Prompt your agent: `"/grill-me to help me refine my
-        project plan"`.
-*   **myriad** (`myriad`): Deploy and manage fullstack Python servers (Whitefly)
-    on Borg in under 5 minutes. Great for quick prototyping of web apps.
-    *   *How to use:* Ask your agent: `"Help me deploy my app using myriad"`.
-*   **context-service** (`context-service`): Search your Workspace (Gmail,
-    Calendar, Drive, Chat) to retrieve context.
-    *   *How to use:* `"Search my Gmail for recent threads about our project"`
-        or `"Draft follow-ups from my calendar notes today"`.
-*   **skill-creator** & **skill-finder**: Tools to search for existing skills or
-    package your successful workflows into new reusable skills.
-
---------------------------------------------------------------------------------
-
-## 🚀 Next Steps
-
-1.  **Register:** Ask your agent to register you using the `hackathon-helper`
-    skill.
-    *   *Prompt:* "Register me for the hackathon"
-2.  **Find Teammates:** If you need a team, ask your agent to find potential
-    collaborators.
-    *   *Prompt:* "Find potential collaborators"
-3.  **Start Hacking:** Use this workspace to build your prototype.
-4.  **Submit:** When ready, ask your agent to submit your project.
-    *   *Prompt:* "Submit my hackathon project"
+- [x] Hub firmware (XIAO ESP32S3) — builds; flash + fill `secrets.h`
+- [~] Node firmware (XIAO nRF52840 + VL53L5CX) — **written, not yet built/tested**
+  (no PlatformIO toolchain or hardware here). LoRa pins come from Meshtastic's
+  variant for this kit; the ToF I2C wiring (D7=SDA, D6=SCL) and TX-only RF
+  switch need bench confirmation. First `node/` build pulls the nRF52 toolchain.
+- [x] Dashboard — builds; needs `.env.local`
+- [x] Hub self-test — with no nodes built yet, the hub publishes fake desk
+      `/US/SVL/CRBN100/4/_SELFTEST` flipping every 10 s; watching it toggle
+      on the dashboard verifies hub→WiFi→Firebase→dashboard end to end. It
+      retires (and deletes itself from Firebase) when a real node is heard.
+- [x] Team schema adopted — packets carry country/site/office/floor/deskId;
+      `last_updated` is epoch seconds via NTP, matching existing records.
+- [ ] Firebase project (manual, needs your Google account)
+- [ ] Sensor threshold tuning at the real desk (`docs/06-tof-sensor.md`)
+- [ ] Battery reporting (protocol field reserved, unwired)
