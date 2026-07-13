@@ -265,8 +265,8 @@ export default function App() {
 function Header(props: {
   live: boolean;
   serverNow: number;
-  searchQuery: string;
-  setSearchQuery: (q: string) => void;
+  searchQuery?: string;
+  setSearchQuery?: (q: string) => void;
 }) {
   return (
     <header className="head">
@@ -290,13 +290,16 @@ function Header(props: {
         </div>
         <span className="head__spacer" />
         <div className="head__right">
-          <input
-            type="text"
-            placeholder="Search user..."
-            value={props.searchQuery}
-            onChange={(e) => props.setSearchQuery(e.target.value)}
-            className="search-input"
-          />
+          {props.searchQuery !== undefined &&
+            props.setSearchQuery !== undefined && (
+              <input
+                type="text"
+                placeholder="Search user..."
+                value={props.searchQuery}
+                onChange={(e) => props.setSearchQuery?.(e.target.value)}
+                className="search-input"
+              />
+            )}
           <span className={`live ${props.live ? 'live--on' : ''}`}>
             <span className="live__dot" />
             {props.live ? 'Live' : 'Reconnecting'}

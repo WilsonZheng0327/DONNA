@@ -16,6 +16,7 @@ export interface DeskRecord {
   hold_user?: string;
   hold_start?: number; // epoch seconds
   hold_expires?: number; // epoch seconds
+  in_meeting?: boolean;
 }
 
 /** One office subtree: floor -> deskId -> record. */
