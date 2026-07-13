@@ -31,6 +31,11 @@ const STATUS_LABEL: Record<DeskStatus, string> = {
   'in-meeting': 'In Meeting (Away)',
 };
 
+const DESK_NAMES: Record<string, string> = {
+  '4T432F': "Wilson's Desk",
+  '4T433E': "Jeff's Desk",
+};
+
 interface Props {
   deskId: string;
   rec: DeskRecord;
@@ -59,7 +64,7 @@ export default function DeskCard({
       <header className="card__head">
         <span className="card__name">
           <span className="material-symbols-outlined">chair</span>
-          <span>{deskId}</span>
+          <span>{DESK_NAMES[deskId] || deskId}</span>
         </span>
         {rec.node_id != null && (
           <span className="card__id">
