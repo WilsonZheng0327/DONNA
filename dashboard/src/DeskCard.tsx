@@ -48,6 +48,10 @@ export default function DeskCard({
 }: Props) {
   const bars = rssiBars(rec.rssi ?? -120);
   const agoMs = serverNow - (rec.last_updated ?? 0) * 1000;
+  const isBooked =
+    rec.hold_user &&
+    rec.hold_expires &&
+    rec.hold_expires * 1000 > serverNow;
   return (
     <article
       className={`card card--${status}`}
@@ -67,7 +71,7 @@ export default function DeskCard({
       {/* key= makes React remount on status change, replaying the flash */}
       <div className="card__status" key={status}>
         {STATUS_LABEL[status]}
-        {(status === 'reserved' || status === 'in-meeting') && rec.hold_user
+        {isBooked
           ? ` · ${rec.hold_user}${rec.hold_expires ? ` (until ${formatTime(rec.hold_expires)})` : ''}`
           : ''}
       </div>
